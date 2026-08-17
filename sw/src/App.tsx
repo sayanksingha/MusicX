@@ -123,6 +123,8 @@ export default function App() {
   const [queue, setQueue] = useState<Song[]>([]);
   const [queueIndex, setQueueIndex] = useState<number>(-1);
   const [autoPlayRelated, setAutoPlayRelated] = useState<boolean>(true);
+  // Tracks played during the current listening session. Auto-radio never repeats them.
+  const playedTrackIdsRef = React.useRef<Set<string>>(new Set());
 
   // UI Panels / Modals
   const [showLyrics, setShowLyrics] = useState<boolean>(false);
@@ -400,6 +402,7 @@ export default function App() {
         return;
       }
 
+      playedTrackIdsRef.current.add(song.id);
       setCurrentSong(song);
       setIsPlaying(true);
       setCurrentTime(0);
@@ -443,31 +446,34 @@ export default function App() {
     showToast(`Added "${song.title}" to queue`);
   }, [showToast]);
 
-  // Start Song Radio Mix
+  // Start Song Radio Mix: build an original Swargam radio queue from the same musical profile,
+  // never reusing the seed track or a track already heard in this session.
   const handleStartRadio = useCallback(async (targetSong?: Song) => {
     const baseSong = targetSong || currentSong;
     if (!baseSong) return;
 
-    showToast(`📻 Starting radio mix for "${baseSong.title}"...`);
-
+    showToast(`📻 Building a Swargam radio mix for “${baseSong.title}”...`);
     try {
+      const excluded = Array.from(playedTrackIdsRef.current).join(',');
       const res = await fetch(
-        `/api/related?title=${encodeURIComponent(baseSong.title)}&artist=${encodeURIComponent(baseSong.artist)}`
+        `/api/related?title=${encodeURIComponent(baseSong.title)}&artist=${encodeURIComponent(baseSong.artist)}&excludeId=${encodeURIComponent(baseSong.id)}&excludeIds=${encodeURIComponent(excluded)}`
       );
       const data = await res.json();
-      if (data.songs && data.songs.length > 0) {
-        const radioQueue = [baseSong, ...data.songs];
+      const related = (data.songs || []).filter((s: Song) => s.id !== baseSong.id && !playedTrackIdsRef.current.has(s.id));
+      if (related.length > 0) {
+        const radioQueue = [baseSong, ...related];
         setQueue(radioQueue);
         setQueueIndex(0);
         setCurrentSong(baseSong);
         setIsPlaying(true);
+        playedTrackIdsRef.current.add(baseSong.id);
         addToHistory(baseSong);
-        showToast(`📻 Radio Mix ready: ${radioQueue.length} tracks queued`);
+        showToast(`📻 ${related.length} similar tracks queued`);
       } else {
-        showToast('Radio mix loaded with current track.');
+        showToast('No new matching tracks found yet.');
       }
     } catch (err) {
-      showToast('Started radio mix.');
+      showToast('Could not load radio tracks.');
     }
   }, [currentSong, showToast]);
 
@@ -513,6 +519,7 @@ export default function App() {
 
     if (nextIndex < queue.length) {
       const nextTrack = queue[nextIndex];
+      playedTrackIdsRef.current.add(nextTrack.id);
       setQueueIndex(nextIndex);
       setCurrentSong(nextTrack);
       setIsPlaying(true);
@@ -532,18 +539,20 @@ export default function App() {
         setCurrentOfflineBlobUrl(offlineMatch?.blobUrl);
       } else if (autoPlayRelated && currentSong && !isOffline) {
         try {
+          const excluded = Array.from(playedTrackIdsRef.current).join(',');
           const res = await fetch(
-            `/api/related?title=${encodeURIComponent(currentSong.title)}&artist=${encodeURIComponent(
-              currentSong.artist
-            )}`
+            `/api/related?title=${encodeURIComponent(currentSong.title)}&artist=${encodeURIComponent(currentSong.artist)}&excludeId=${encodeURIComponent(currentSong.id)}&excludeIds=${encodeURIComponent(excluded)}`
           );
           const data = await res.json();
-          if (data.songs && data.songs.length > 0) {
-            const related = data.songs;
+          const related = (data.songs || []).filter((s: Song) =>
+            s.id !== currentSong.id && !playedTrackIdsRef.current.has(s.id)
+          );
+          if (related.length > 0) {
             setQueue((prev) => [...prev, ...related]);
             setQueueIndex(queue.length);
             setCurrentSong(related[0]);
             setIsPlaying(true);
+            playedTrackIdsRef.current.add(related[0].id);
             addToHistory(related[0]);
           } else {
             setIsPlaying(false);
@@ -578,6 +587,7 @@ export default function App() {
     if (queueIndex > 0) {
       const prevIndex = queueIndex - 1;
       const prevTrack = queue[prevIndex];
+      playedTrackIdsRef.current.add(prevTrack.id);
       setQueueIndex(prevIndex);
       setCurrentSong(prevTrack);
       setIsPlaying(true);

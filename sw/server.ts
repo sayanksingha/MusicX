@@ -337,13 +337,41 @@ app.get('/api/related', async (req, res) => {
   try {
     const title = (req.query.title as string || '').trim();
     const artist = (req.query.artist as string || '').trim();
+    const excludeId = String(req.query.excludeId || '');
+    const excludeIds = new Set(
+      String(req.query.excludeIds || '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean)
+    );
+    if (excludeId) excludeIds.add(excludeId);
 
-    const query = `${title} ${artist} similar song official audio`;
-    const searchResult = await ytSearch(query);
-    const videos = selectMusicResults(searchResult.videos || [], `${title} ${artist}`, 12)
-      .filter((v) => v.videoId !== req.query.excludeId);
+    // Keep the radio experience music-first and artist/track-adjacent.
+    // The search terms bias toward the same musical profile without copying Spotify's implementation.
+    const queries = [
+      `${artist} similar songs official audio`,
+      `${artist} ${title} similar music`,
+      `${artist} songs same genre official audio`,
+    ];
 
-    const songs = videos.map((v) => mapVideoToSong(v, artist || 'Swargam'))
+    const collected: any[] = [];
+    for (const query of queries) {
+      const searchResult = await ytSearch(query);
+      collected.push(...(searchResult.videos || []));
+      if (collected.length >= 40) break;
+    }
+
+    const seen = new Set<string>();
+    const unique = collected.filter((v) => {
+      if (!v?.videoId || seen.has(v.videoId) || excludeIds.has(v.videoId)) return false;
+      seen.add(v.videoId);
+      return true;
+    });
+
+    const videos = selectMusicResults(unique, `${artist} ${title}`, 12);
+    const songs = videos
+      .filter((v) => !excludeIds.has(v.videoId))
+      .map((v) => mapVideoToSong(v, artist || 'Swargam'));
 
     res.json({ songs });
   } catch (error: any) {
