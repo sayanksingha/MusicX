@@ -241,9 +241,10 @@ app.get('/api/search', async (req, res) => {
       return res.json({ songs: [] });
     }
 
+    const requestedLimit = Math.min(25, Math.max(1, Number(req.query.limit) || 25));
     const musicQuery = `${query} song official audio music video`;
     const searchResult = await ytSearch(musicQuery);
-    const videos = selectMusicResults(searchResult.videos || [], query, 25);
+    const videos = selectMusicResults(searchResult.videos || [], query, requestedLimit);
 
     const songs = videos.map((v) => mapVideoToSong(v));
 

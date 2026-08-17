@@ -87,6 +87,7 @@ export default function App() {
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Song[]>([]);
+  const [searchSuggestions, setSearchSuggestions] = useState<Song[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
   // Featured / Trending Songs
@@ -306,6 +307,32 @@ export default function App() {
     fetchTrending(genreId);
   };
 
+  // Live music suggestions: fetch only after the user pauses typing.
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (query.length < 2) {
+      setSearchSuggestions([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=7`, { signal: controller.signal });
+        if (!res.ok) return;
+        const data = await res.json();
+        setSearchSuggestions((data.songs || []).slice(0, 7));
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') console.error('Live suggestions failed:', e);
+      }
+    }, 280);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
   // Search Submit
   const handleSearchSubmit = async (query: string) => {
     if (!query.trim()) return;
@@ -325,8 +352,24 @@ export default function App() {
   // Play a song
   const playSong = useCallback(
     async (song: Song, customQueue?: Song[], index?: number) => {
+      const sameSong = currentSong?.id === song.id;
+
+      // A repeated touch/click on the already-playing track must NOT reload it.
+      // Only change playback state/queue when the track actually changes.
+      if (sameSong) {
+        setIsPlaying(true);
+        if (customQueue) {
+          setQueue(customQueue);
+          const nextIndex = index !== undefined ? index : customQueue.findIndex((s) => s.id === song.id);
+          setQueueIndex(nextIndex >= 0 ? nextIndex : queueIndex);
+        }
+        return;
+      }
+
       setCurrentSong(song);
       setIsPlaying(true);
+      setCurrentTime(0);
+      setSeekTime(null);
 
       // Check if song has an offline Blob URL
       const offlineMatch = offlineTracks.find((t) => t.id === song.id);
@@ -357,7 +400,7 @@ export default function App() {
         });
       }
     },
-    [offlineTracks]
+    [offlineTracks, currentSong?.id, queueIndex]
   );
 
   // Add song to queue
@@ -655,6 +698,7 @@ export default function App() {
         <div className="mx-main-pane flex-1 bg-[#121212] rounded-xl border border-white/5 flex flex-col min-w-0 overflow-hidden relative">
           <Navbar
             searchQuery={searchQuery}
+            searchSuggestions={searchSuggestions}
             onSearchChange={setSearchQuery}
             onSearchSubmit={handleSearchSubmit}
             activeTab={activeTab}

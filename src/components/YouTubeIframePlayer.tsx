@@ -43,6 +43,7 @@ export const YouTubeIframePlayer: React.FC<YouTubeIframePlayerProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const intervalRef = useRef<any>(null);
   const isApiReadyRef = useRef<boolean>(false);
+  const loadedVideoIdRef = useRef<string | null>(null);
 
   // Initialize MediaSession API for OS Notification / Lock Screen Controls
   useEffect(() => {
@@ -158,10 +159,13 @@ export const YouTubeIframePlayer: React.FC<YouTubeIframePlayerProps> = ({
 
       if (playerRef.current && typeof playerRef.current.loadVideoById === 'function') {
         try {
-          playerRef.current.loadVideoById(currentSong.id);
-          if (isPlaying) {
-            playerRef.current.playVideo();
+          // Do not call loadVideoById again for the same track. On touch devices
+          // repeated taps can otherwise restart the YouTube player from 0:00.
+          if (loadedVideoIdRef.current !== currentSong.id) {
+            loadedVideoIdRef.current = currentSong.id;
+            playerRef.current.loadVideoById(currentSong.id);
           }
+          if (isPlaying) playerRef.current.playVideo();
         } catch (err) {
           console.error('Error loading video by ID:', err);
         }
@@ -255,6 +259,7 @@ export const YouTubeIframePlayer: React.FC<YouTubeIframePlayerProps> = ({
 
   const initPlayer = (videoId: string) => {
     if (!window.YT || !window.YT.Player) return;
+    loadedVideoIdRef.current = videoId;
 
     if (playerRef.current && typeof playerRef.current.destroy === 'function') {
       try {

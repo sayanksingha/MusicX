@@ -162,6 +162,28 @@ button:focus-visible, input:focus-visible { outline: 2px solid rgba(30,215,96,.9
   .mx-playerbar { padding-left: 10px !important; padding-right: 10px !important; }
 }
 
+
+/* Touch-first controls: never require a hover to reveal the primary play action. */
+@media (hover: none), (pointer: coarse) {
+  .mx-song-card {
+    transform: none !important;
+    transition: background-color .18s ease, border-color .18s ease, box-shadow .18s ease;
+  }
+  .mx-song-card .mx-cover button {
+    opacity: 1 !important;
+    transform: translateY(0) !important;
+  }
+  .mx-song-card:hover {
+    transform: none !important;
+  }
+  .mx-song-card:active {
+    transform: scale(.985) !important;
+  }
+  .mx-song-card button, .mx-song-card h3 {
+    touch-action: manipulation;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }

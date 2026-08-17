@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Music, Heart, Library, History, Compass, Download, User, X, Radio, Smartphone } from 'lucide-react';
-import { UserProfile } from '../types';
+import { UserProfile, Song } from '../types';
 
 interface NavbarProps {
   searchQuery: string;
+  searchSuggestions: Song[];
   onSearchChange: (q: string) => void;
   onSearchSubmit: (q: string) => void;
   activeTab: 'discover' | 'liked' | 'playlists' | 'history' | 'downloads' | 'search';
@@ -17,6 +18,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({
   searchQuery,
+  searchSuggestions,
   onSearchChange,
   onSearchSubmit,
   activeTab,
@@ -109,7 +111,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               onFocus={() => setIsFocused(true)}
-              onBlur={() => setIsFocused(false)}
+              onBlur={() => window.setTimeout(() => setIsFocused(false), 120)}
               className="w-full py-2.5 pl-3 pr-10 bg-transparent text-sm text-white placeholder-neutral-400 focus:outline-none"
             />
             {searchQuery && (
@@ -130,6 +132,32 @@ export const Navbar: React.FC<NavbarProps> = ({
               </kbd>
             )}
           </div>
+
+          {/* Fast touch-friendly live suggestions */}
+          {isFocused && searchQuery.trim().length >= 2 && searchSuggestions.length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-2 z-50 overflow-hidden rounded-2xl border border-white/10 bg-[#181818]/98 shadow-2xl backdrop-blur-xl">
+              {searchSuggestions.map((song) => (
+                <button
+                  key={song.id}
+                  type="button"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/10 active:bg-white/15 transition-colors touch-manipulation"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    onSearchChange(song.title);
+                    onSearchSubmit(song.title);
+                    setIsFocused(false);
+                  }}
+                >
+                  <img src={song.thumbnail} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" loading="lazy" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-white truncate">{song.title}</span>
+                    <span className="block text-xs text-neutral-400 truncate">{song.artist}</span>
+                  </span>
+                  <Search className="w-4 h-4 text-neutral-500 shrink-0" />
+                </button>
+              ))}
+            </div>
+          )}
         </form>
 
         {/* Right: Mobile View Tabs Bar */}
