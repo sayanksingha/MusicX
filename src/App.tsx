@@ -89,6 +89,8 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<Song[]>([]);
   const [searchSuggestions, setSearchSuggestions] = useState<Song[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const searchCacheRef = React.useRef<Map<string, Song[]>>(new Map());
+  const searchInflightRef = React.useRef<Map<string, AbortController>>(new Map());
 
   // Featured / Trending Songs
   const [trendingSongs, setTrendingSongs] = useState<Song[]>([]);
@@ -307,41 +309,78 @@ export default function App() {
     fetchTrending(genreId);
   };
 
-  // Live music suggestions: fetch only after the user pauses typing.
+  // Fast live suggestions: paint local matches immediately, then refresh from
+  // the server after the user pauses. This keeps typing responsive even on a
+  // slow mobile connection.
   useEffect(() => {
-    const query = searchQuery.trim();
+    const query = searchQuery.trim().replace(/\s+/g, ' ');
     if (query.length < 2) {
       setSearchSuggestions([]);
       return;
     }
 
-    const controller = new AbortController();
+    const key = query.toLowerCase();
+    const localPool = [...searchResults, ...trendingSongs, ...historySongs, ...likedSongs, ...queue];
+    const unique = new Map<string, Song>();
+    for (const song of localPool) unique.set(song.id, song);
+    const localMatches = Array.from(unique.values())
+      .filter((song) => `${song.title} ${song.artist}`.toLowerCase().includes(key))
+      .slice(0, 6);
+    if (localMatches.length) setSearchSuggestions(localMatches);
+
+    const cached = searchCacheRef.current.get(`suggest:${key}`);
+    if (cached) {
+      setSearchSuggestions(cached.slice(0, 6));
+      return;
+    }
+
     const timer = window.setTimeout(async () => {
+      const previous = searchInflightRef.current.get(key);
+      previous?.abort();
+      const controller = new AbortController();
+      searchInflightRef.current.set(key, controller);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=7`, { signal: controller.signal });
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=6&suggest=1`, { signal: controller.signal });
         if (!res.ok) return;
         const data = await res.json();
-        setSearchSuggestions((data.songs || []).slice(0, 7));
+        const songs = (data.songs || []).slice(0, 6);
+        searchCacheRef.current.set(`suggest:${key}`, songs);
+        if (searchQuery.trim().replace(/\s+/g, ' ').toLowerCase() === key) {
+          setSearchSuggestions(songs.length ? songs : localMatches);
+        }
       } catch (e: any) {
         if (e?.name !== 'AbortError') console.error('Live suggestions failed:', e);
+      } finally {
+        if (searchInflightRef.current.get(key) === controller) searchInflightRef.current.delete(key);
       }
-    }, 280);
+    }, 350);
 
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-    };
-  }, [searchQuery]);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery, searchResults, trendingSongs, historySongs, likedSongs, queue]);
 
   // Search Submit
   const handleSearchSubmit = async (query: string) => {
-    if (!query.trim()) return;
-    setIsSearching(true);
+    const normalized = query.trim().replace(/\s+/g, ' ');
+    if (!normalized) return;
     setActiveTab('search');
+
+    const key = normalized.toLowerCase();
+    const cached = searchCacheRef.current.get(key);
+    const suggested = searchCacheRef.current.get(`suggest:${key}`);
+    if (cached) {
+      setSearchResults(cached);
+      return;
+    }
+    if (suggested?.length) setSearchResults(suggested);
+
+    setIsSearching(!suggested?.length);
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(normalized)}&limit=25`);
+      if (!res.ok) throw new Error(`Search failed: ${res.status}`);
       const data = await res.json();
-      setSearchResults(data.songs || []);
+      const songs = data.songs || [];
+      searchCacheRef.current.set(key, songs);
+      setSearchResults(songs);
     } catch (e) {
       console.error('Failed to search songs:', e);
     } finally {
@@ -380,8 +419,10 @@ export default function App() {
       }
 
       // Save to history
-      const updatedHistory = addToHistory(song);
-      setHistorySongs(updatedHistory);
+      window.setTimeout(() => {
+        const updatedHistory = addToHistory(song);
+        setHistorySongs(updatedHistory);
+      }, 0);
 
       if (customQueue) {
         setQueue(customQueue);

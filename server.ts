@@ -217,6 +217,24 @@ function selectMusicResults(videos: any[], query = '', limit = 25) {
     .map(item => item.video);
 }
 
+const searchCache = new Map<string, { expiresAt: number; songs: any[] }>();
+const searchInflight = new Map<string, Promise<any[]>>();
+const SEARCH_CACHE_TTL = 60 * 1000;
+
+function cachedSearch(key: string, fn: () => Promise<any[]>) {
+  const now = Date.now();
+  const cached = searchCache.get(key);
+  if (cached && cached.expiresAt > now) return Promise.resolve(cached.songs);
+  const running = searchInflight.get(key);
+  if (running) return running;
+  const promise = fn().then((songs) => {
+    searchCache.set(key, { expiresAt: Date.now() + SEARCH_CACHE_TTL, songs });
+    return songs;
+  }).finally(() => searchInflight.delete(key));
+  searchInflight.set(key, promise);
+  return promise;
+}
+
 function mapVideoToSong(v: any, fallbackArtist = 'Swargam') {
   return {
     id: v.videoId,
@@ -241,14 +259,17 @@ app.get('/api/search', async (req, res) => {
       return res.json({ songs: [] });
     }
 
-    const requestedLimit = Math.min(25, Math.max(1, Number(req.query.limit) || 25));
+    const suggest = String(req.query.suggest || '') === '1';
+    const requestedLimit = Math.min(suggest ? 6 : 25, Math.max(1, Number(req.query.limit) || (suggest ? 6 : 25)));
     const musicQuery = `${query} song official audio music video`;
-    const searchResult = await ytSearch(musicQuery);
-    const videos = selectMusicResults(searchResult.videos || [], query, requestedLimit);
+    const cacheKey = `${suggest ? 'suggest' : 'search'}:${query.toLowerCase()}`;
+    const songs = await cachedSearch(cacheKey, async () => {
+      const searchResult = await ytSearch(musicQuery);
+      const videos = selectMusicResults(searchResult.videos || [], query, requestedLimit);
+      return videos.map((v) => mapVideoToSong(v));
+    });
 
-    const songs = videos.map((v) => mapVideoToSong(v));
-
-    res.json({ songs });
+    res.json({ songs: songs.slice(0, requestedLimit) });
   } catch (error: any) {
     console.error('Error in /api/search:', error);
     res.status(500).json({ error: 'Failed to search music', details: error?.message });

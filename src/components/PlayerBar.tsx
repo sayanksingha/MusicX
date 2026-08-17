@@ -61,7 +61,7 @@ interface PlayerBarProps {
   onOpenNowPlaying?: () => void;
 }
 
-export const PlayerBar: React.FC<PlayerBarProps> = ({
+const PlayerBarComponent: React.FC<PlayerBarProps> = ({
   currentSong,
   isPlaying,
   currentTime,
@@ -403,3 +403,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
     </div>
   );
 };
+
+
+export const PlayerBar = React.memo(PlayerBarComponent);

@@ -17,7 +17,7 @@ interface SongCardProps {
   onShare?: (song: Song) => void;
 }
 
-export const SongCard: React.FC<SongCardProps> = ({
+const SongCardComponent: React.FC<SongCardProps> = ({
   song,
   isCurrentSong,
   isPlaying,
@@ -155,3 +155,13 @@ export const SongCard: React.FC<SongCardProps> = ({
     </div>
   );
 };
+
+
+// Playback position changes every second; don't rerender hundreds of cards for it.
+export const SongCard = React.memo(SongCardComponent, (a, b) =>
+  a.song.id === b.song.id &&
+  a.isCurrentSong === b.isCurrentSong &&
+  a.isPlaying === b.isPlaying &&
+  a.isLiked === b.isLiked &&
+  a.isDownloaded === b.isDownloaded
+);

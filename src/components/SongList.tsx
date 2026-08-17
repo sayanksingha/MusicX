@@ -19,7 +19,7 @@ interface SongListProps {
   showRemoveOption?: boolean;
 }
 
-export const SongList: React.FC<SongListProps> = ({
+const SongListComponent: React.FC<SongListProps> = ({
   songs,
   currentSongId,
   isPlaying,
@@ -207,3 +207,6 @@ export const SongList: React.FC<SongListProps> = ({
     </div>
   );
 };
+
+
+export const SongList = React.memo(SongListComponent);

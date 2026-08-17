@@ -233,6 +233,7 @@ export const YouTubeIframePlayer: React.FC<YouTubeIframePlayerProps> = ({
   // Timer interval for position update
   useEffect(() => {
     intervalRef.current = setInterval(() => {
+      if (!isPlaying) return;
       if (offlineBlobUrl && audioRef.current) {
         const currentTime = audioRef.current.currentTime || 0;
         const duration = audioRef.current.duration || currentSong?.duration || 0;
@@ -250,12 +251,12 @@ export const YouTubeIframePlayer: React.FC<YouTubeIframePlayerProps> = ({
           }
         } catch (e) {}
       }
-    }, 250);
+    }, 1000);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [currentSong, offlineBlobUrl]);
+  }, [currentSong, offlineBlobUrl, isPlaying]);
 
   const initPlayer = (videoId: string) => {
     if (!window.YT || !window.YT.Player) return;
