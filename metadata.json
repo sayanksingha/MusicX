@@ -1,6 +1,6 @@
 {
-  "name": "musicx",
-  "description": "Spotify-inspired high fidelity music streaming experience with user accounts, custom playlists, song radio, sleep timer, crossfade audio settings, and offline playback.",
+  "name": "swargam",
+  "description": "Professional ad-free music streaming experience with search, personalized discovery, playlists, radio, lyrics, queue, offline listening, audio controls, and a full-screen player.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

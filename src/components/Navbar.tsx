@@ -60,7 +60,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="w-8 h-8 rounded-full bg-[#1DB954] flex items-center justify-center text-black shadow-md">
               <Music className="w-4 h-4 text-black fill-black" />
             </div>
-            <span className="font-extrabold text-lg text-white">musicx</span>
+            <span className="font-extrabold text-lg text-white">Swargam</span>
           </div>
 
           {/* User Account Pill */}

@@ -39,7 +39,7 @@ app.get('/api/search', async (req, res) => {
       id: v.videoId,
       title: v.title,
       artist: v.author?.name || 'Unknown Artist',
-      channelName: v.author?.name || 'Musify',
+      channelName: v.author?.name || 'Swargam',
       channelId: v.author?.url || '',
       thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
       duration: v.seconds || 0,
@@ -80,7 +80,7 @@ app.get('/api/trending', async (req, res) => {
       id: v.videoId,
       title: v.title,
       artist: v.author?.name || 'Various Artists',
-      channelName: v.author?.name || 'Musify',
+      channelName: v.author?.name || 'Swargam',
       thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
       duration: v.seconds || 0,
       durationFormatted: v.timestamp || '0:00',
@@ -109,8 +109,8 @@ app.get('/api/related', async (req, res) => {
     const songs = videos.map((v) => ({
       id: v.videoId,
       title: v.title,
-      artist: v.author?.name || artist || 'Musify',
-      channelName: v.author?.name || 'Musify',
+      artist: v.author?.name || artist || 'Swargam',
+      channelName: v.author?.name || 'Swargam',
       thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
       duration: v.seconds || 0,
       durationFormatted: v.timestamp || '0:00',
@@ -140,7 +140,7 @@ app.get('/api/lyrics', async (req, res) => {
     return res.json({
       title,
       artist,
-      lyrics: `[Verse 1]\nListening to ${title} by ${artist}\n\n[Chorus]\nEnjoy high fidelity music streaming on Musify.`,
+      lyrics: `[Verse 1]\nListening to ${title} by ${artist}\n\n[Chorus]\nEnjoy high fidelity music streaming on Swargam.`,
       isAiGenerated: false,
     });
   }
@@ -189,7 +189,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Musify Server running on http://0.0.0.0:${PORT}`);
+    console.log(`Swargam Server running on http://0.0.0.0:${PORT}`);
   });
 }
 

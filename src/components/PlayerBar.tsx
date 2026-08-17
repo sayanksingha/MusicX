@@ -20,6 +20,7 @@ import {
   Moon,
   Sliders,
   Radio,
+  Maximize2,
 } from 'lucide-react';
 import { Song, RepeatMode } from '../types';
 import { formatTime } from '../lib/storage';
@@ -57,6 +58,7 @@ interface PlayerBarProps {
   onOpenSleepTimer: () => void;
   onOpenAudioSettings: () => void;
   onStartRadio?: () => void;
+  onOpenNowPlaying?: () => void;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -92,6 +94,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onOpenSleepTimer,
   onOpenAudioSettings,
   onStartRadio,
+  onOpenNowPlaying,
 }) => {
   const [isSeeking, setIsSeeking] = useState(false);
   const [tempSeek, setTempSeek] = useState(0);
@@ -159,13 +162,22 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           {/* Left: Song Metadata */}
           <div className="flex items-center gap-3 min-w-0 max-w-[240px] sm:max-w-xs md:max-w-sm">
             <div className="relative group shrink-0">
-              <img
-                src={currentSong.thumbnail}
-                alt={currentSong.title}
-                className={`w-12 h-12 rounded object-cover shadow-md border border-white/10 transition-transform ${
-                  isPlaying ? 'scale-100' : 'opacity-80'
-                }`}
-              />
+              <button
+                onClick={onOpenNowPlaying}
+                className="relative rounded overflow-hidden group"
+                title="Open Now Playing"
+              >
+                <img
+                  src={currentSong.thumbnail}
+                  alt={currentSong.title}
+                  className={`w-12 h-12 rounded object-cover shadow-md border border-white/10 transition-transform ${
+                    isPlaying ? 'scale-100' : 'opacity-80'
+                  }`}
+                />
+                <span className="absolute inset-0 bg-black/0 group-hover:bg-black/45 transition flex items-center justify-center">
+                  <Maximize2 className="w-4 h-4 opacity-0 group-hover:opacity-100 transition" />
+                </span>
+              </button>
               {isPlaying && (
                 <div className="absolute inset-0 bg-black/30 rounded flex items-center justify-center">
                   <div className="flex items-end gap-0.5 h-3.5">

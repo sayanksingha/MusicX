@@ -165,3 +165,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid rgba(30,215,96,.9
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+/* Full-screen now playing */
+.np-art-playing { animation: np-float 7s ease-in-out infinite; }
+@keyframes np-float { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-5px) scale(1.006); } }
+
+/* Desktop-grade content rhythm */
+.mx-content h1, .mx-content h2, .mx-content h3 { text-wrap: balance; }
+.mx-content section, .mx-content article { contain: layout paint; }
+
+/* Touch targets and mobile player */
+@media (max-width: 767px) {
+  .mx-content button { min-height: 36px; }
+  .mx-playerbar { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+}

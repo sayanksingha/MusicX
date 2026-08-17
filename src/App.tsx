@@ -58,6 +58,7 @@ import { PlaylistEditModal } from './components/PlaylistEditModal';
 import { AuthModal } from './components/AuthModal';
 import { SleepTimerModal } from './components/SleepTimerModal';
 import { AudioSettingsModal } from './components/AudioSettingsModal';
+import { NowPlayingView } from './components/NowPlayingView';
 
 const GENRES = [
   { id: 'top-hits', name: '🔥 Top Hits', query: 'top music hits 2026' },
@@ -125,6 +126,7 @@ export default function App() {
   const [showLyrics, setShowLyrics] = useState<boolean>(false);
   const [showQueue, setShowQueue] = useState<boolean>(false);
   const [showVideo, setShowVideo] = useState<boolean>(false);
+  const [showNowPlaying, setShowNowPlaying] = useState<boolean>(false);
   const [playlistModalSong, setPlaylistModalSong] = useState<Song | null>(null);
 
   // Sleep Timer State
@@ -526,6 +528,28 @@ export default function App() {
     if (hour < 18) return 'Good afternoon';
     return 'Good evening';
   };
+
+  // Global player shortcuts: Space play/pause, arrows seek, N/P next/previous, L like, S shuffle, R repeat, Q queue, F now-playing.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      if (!currentSong) return;
+      const key = e.key.toLowerCase();
+      if (key === ' ') { e.preventDefault(); setIsPlaying((v) => !v); }
+      else if (key === 'arrowright') { e.preventDefault(); setSeekTime(Math.min(duration || Infinity, currentTime + 5)); }
+      else if (key === 'arrowleft') { e.preventDefault(); setSeekTime(Math.max(0, currentTime - 5)); }
+      else if (key === 'n') { e.preventDefault(); playNextSong(); }
+      else if (key === 'p') { e.preventDefault(); playPreviousSong(); }
+      else if (key === 'l') { e.preventDefault(); handleLikeToggle(currentSong); }
+      else if (key === 's') { e.preventDefault(); setIsShuffle((v) => !v); }
+      else if (key === 'r') { e.preventDefault(); setRepeatMode((m) => m === 'off' ? 'all' : m === 'all' ? 'one' : 'off'); }
+      else if (key === 'q') { e.preventDefault(); setShowQueue((v) => !v); }
+      else if (key === 'f') { e.preventDefault(); setShowNowPlaying(true); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [currentSong, currentTime, duration, playNextSong, playPreviousSong]);
 
   const likedSet = new Set(likedSongs.map((s) => s.id));
   const downloadedSet = new Set(offlineTracks.map((t) => t.id));
@@ -1217,7 +1241,34 @@ export default function App() {
         onOpenSleepTimer={() => setShowSleepTimerModal(true)}
         onOpenAudioSettings={() => setShowAudioSettingsModal(true)}
         onStartRadio={() => currentSong && handleStartRadio(currentSong)}
+        onOpenNowPlaying={() => setShowNowPlaying(true)}
       />
+
+      {showNowPlaying && currentSong && (
+        <NowPlayingView
+          song={currentSong}
+          isPlaying={isPlaying}
+          currentTime={currentTime}
+          duration={duration}
+          volume={isMuted ? 0 : volume}
+          isLiked={likedSet.has(currentSong.id)}
+          isShuffle={isShuffle}
+          repeatMode={repeatMode}
+          queueLength={queue.length}
+          onClose={() => setShowNowPlaying(false)}
+          onPlayPause={() => setIsPlaying((v) => !v)}
+          onNext={playNextSong}
+          onPrevious={playPreviousSong}
+          onSeek={(sec) => setSeekTime(sec)}
+          onVolumeChange={(v) => { setVolume(v); if (v > 0) setIsMuted(false); }}
+          onLike={() => handleLikeToggle(currentSong)}
+          onShuffle={() => setIsShuffle((v) => !v)}
+          onRepeat={() => setRepeatMode((m) => m === 'off' ? 'all' : m === 'all' ? 'one' : 'off')}
+          onQueue={() => setShowQueue(true)}
+          onLyrics={() => setShowLyrics(true)}
+          onShare={() => handleShareSong(currentSong)}
+        />
+      )}
 
       {/* Sleep Timer Modal */}
       <SleepTimerModal

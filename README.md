@@ -1,20 +1,43 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Swargam
 
-# Run and deploy your AI Studio app
+Swargam is an ad-free, high-fidelity music streaming web app with a Spotify-inspired product model and an original interface.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/d891943a-a003-4d30-b0ab-8a227bbd55e7
+- Home / personalized discovery
+- Search with live music results
+- Trending and genre discovery rails
+- Liked Songs
+- Playlists with creation, editing, reordering and removal
+- Recently Played history
+- Offline collection using browser storage
+- Queue management and autoplay related tracks
+- Song Radio
+- Full-screen Now Playing experience
+- Mini player with seek, volume, shuffle and repeat
+- Lyrics panel
+- Video mode
+- Audio quality / equalizer / normalization controls
+- Crossfade settings
+- Sleep timer
+- Shareable track links
+- Keyboard shortcuts
+- Responsive mobile navigation
+- Ad-free listening with no advertising surfaces
+- Local user profile and persistent library data
 
-## Run Locally
+## Run locally
 
-**Prerequisites:**  Node.js
+```bash
+npm install
+npm run dev
+```
 
+For production:
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```bash
+npm run build
+npm start
+```
+
+Set `GEMINI_API_KEY` in the deployment environment when AI-powered lyric assistance is enabled.

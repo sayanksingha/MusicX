@@ -56,8 +56,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Music2 className="w-4 h-4 fill-black" />
           </div>
           <div>
-            <span className="font-black text-xl tracking-tight text-white font-sans">musicx</span>
-            <span className="text-[10px] text-[#1DB954] font-semibold ml-1.5 uppercase tracking-wider">Premium</span>
+            <span className="font-black text-xl tracking-tight text-white font-sans">Swargam</span>
+            <span className="text-[10px] text-[#1DB954] font-semibold ml-1.5 uppercase tracking-wider">Ad-free</span>
           </div>
         </div>
 
@@ -247,7 +247,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="min-w-0">
               <p className="text-xs font-bold text-white truncate">{currentUser.username}</p>
               <p className="text-[10px] text-neutral-400 truncate">
-                {currentUser.id === 'guest_user' ? 'Guest Listener' : 'musicx Member'}
+                {currentUser.id === 'guest_user' ? 'Guest Listener' : 'Swargam Member'}
               </p>
             </div>
           </div>
