@@ -127,7 +127,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#000000] border-t border-white/10 px-4 py-2.5 transition-all shadow-2xl text-white">
+    <div className="mx-playerbar fixed bottom-0 left-0 right-0 z-40 bg-[#000000] border-t border-white/10 px-4 py-2.5 transition-all shadow-2xl text-white">
       <div className="max-w-7xl mx-auto flex flex-col gap-1.5">
         {/* Top Scrubber Line */}
         <div className="flex items-center gap-3 w-full text-xs font-mono text-neutral-400">

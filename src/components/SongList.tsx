@@ -48,7 +48,7 @@ export const SongList: React.FC<SongListProps> = ({
   }
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className="mx-song-list w-full overflow-x-auto">
       <table className="w-full text-left border-collapse min-w-[600px]">
         <thead>
           <tr className="border-b border-white/10 text-neutral-400 text-xs font-semibold uppercase tracking-wider">

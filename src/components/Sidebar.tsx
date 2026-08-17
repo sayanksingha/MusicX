@@ -44,7 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenAuth,
 }) => {
   return (
-    <aside className="w-64 lg:w-72 flex-col gap-2 shrink-0 hidden md:flex h-full select-none">
+    <aside className="mx-sidebar w-64 lg:w-72 flex-col gap-2 shrink-0 hidden md:flex h-full select-none">
       {/* Top Navigation Box */}
       <div className="bg-[#121212] rounded-xl p-4 space-y-3 border border-white/5">
         {/* Brand */}

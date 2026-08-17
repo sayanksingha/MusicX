@@ -531,7 +531,7 @@ export default function App() {
   const downloadedSet = new Set(offlineTracks.map((t) => t.id));
 
   return (
-    <div className="h-screen bg-black text-white flex flex-col font-sans select-none overflow-hidden p-2 pb-24 md:pb-24">
+    <div className="mx-app-shell h-screen bg-black text-white flex flex-col font-sans select-none overflow-hidden p-2 pb-24 md:pb-24">
       {/* Network Offline Alert Banner */}
       {isOffline && (
         <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-1.5 text-center text-amber-300 text-xs font-semibold flex items-center justify-center gap-2 shrink-0 rounded-lg mb-1">
@@ -541,7 +541,7 @@ export default function App() {
       )}
 
       {/* Spotify 2-Pane Shell */}
-      <div className="flex-1 flex gap-2 min-h-0 overflow-hidden">
+      <div className="mx-workspace flex-1 flex gap-2 min-h-0 overflow-hidden">
         {/* Left Sidebar Pane */}
         <Sidebar
           activeTab={activeTab}
@@ -561,7 +561,7 @@ export default function App() {
         />
 
         {/* Right Main Content Pane */}
-        <div className="flex-1 bg-[#121212] rounded-xl border border-white/5 flex flex-col min-w-0 overflow-hidden relative">
+        <div className="mx-main-pane flex-1 bg-[#121212] rounded-xl border border-white/5 flex flex-col min-w-0 overflow-hidden relative">
           <Navbar
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
@@ -574,7 +574,7 @@ export default function App() {
             onOpenAuth={() => setShowAuthModal(true)}
           />
 
-          <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar">
+          <main className="mx-content flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar">
             {/* DISCOVER TAB */}
             {activeTab === 'discover' && (
               <div className="space-y-6 animate-fade-in">

@@ -49,7 +49,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 w-full bg-[#121212]/95 backdrop-blur-md px-4 md:px-6 py-3 transition-all border-b border-white/5">
+    <header className="mx-navbar sticky top-0 z-30 w-full bg-[#121212]/95 backdrop-blur-md px-4 md:px-6 py-3 transition-all border-b border-white/5">
       <div className="flex flex-col md:flex-row items-center justify-between gap-3">
         {/* Left: Branding for mobile + User Profile */}
         <div className="flex items-center justify-between w-full md:w-auto gap-3">

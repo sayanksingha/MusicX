@@ -32,7 +32,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
   const upcomingSongs = queue.slice(queueIndex + 1);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs animate-fade-in">
+    <div className="mx-queue fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs animate-fade-in">
       <div className="w-full max-w-md bg-slate-950 border-l border-slate-800/80 h-full flex flex-col shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-800">

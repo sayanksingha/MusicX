@@ -32,8 +32,8 @@ export const SongCard: React.FC<SongCardProps> = ({
   onShare,
 }) => {
   return (
-    <div className={`group mx-song-card relative bg-[#181818] hover:bg-[#282828] border border-white/5 rounded-lg p-3.5 transition-all duration-300 flex flex-col justify-between shadow-lg hover:shadow-2xl ${isCurrentSong ? 'mx-playing' : ''}`} onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); e.currentTarget.style.setProperty('--mx-x', `${((e.clientX-r.left)/r.width)*100}%`); e.currentTarget.style.setProperty('--mx-y', `${((e.clientY-r.top)/r.height)*100}%`); }}>
-    {/* Cover Image Container */}
+    <div className="mx-song-card group relative bg-[#181818] hover:bg-[#282828] border border-white/5 rounded-lg p-3.5 transition-all duration-300 flex flex-col justify-between shadow-lg hover:shadow-2xl">
+      {/* Cover Image Container */}
       <div className="mx-cover relative aspect-square w-full rounded-md overflow-hidden bg-neutral-900 mb-3 shadow-md">
         <img
           src={song.thumbnail}
@@ -57,7 +57,7 @@ export const SongCard: React.FC<SongCardProps> = ({
         {/* Spotify Green Floating Play Overlay Button */}
         <button
           onClick={() => onPlay(song)}
-          className={`mx-primary absolute bottom-2 right-2 w-11 h-11 rounded-full bg-[#1DB954] hover:bg-[#1ed760] text-black flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-105 ${
+          className={`absolute bottom-2 right-2 w-11 h-11 rounded-full bg-[#1DB954] hover:bg-[#1ed760] text-black flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-105 ${
             isCurrentSong
               ? 'opacity-100 translate-y-0 shadow-lg shadow-[#1DB954]/30'
               : 'opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0'
