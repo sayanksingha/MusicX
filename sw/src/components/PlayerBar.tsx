@@ -13,7 +13,6 @@ import {
   Heart,
   ListMusic,
   AlignLeft,
-  Tv,
   Plus,
   Download,
   CheckCircle2,
@@ -360,17 +359,6 @@ const PlayerBarComponent: React.FC<PlayerBarProps> = ({
                 )}
               </button>
 
-              <button
-                onClick={onVideoToggle}
-                className={`p-2 rounded-lg text-xs flex items-center gap-1 transition ${
-                  showVideo
-                    ? 'bg-slate-800 text-emerald-400 font-medium'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="Video Mode"
-              >
-                <Tv className="w-4 h-4" />
-              </button>
             </div>
 
             {/* Volume Control */}

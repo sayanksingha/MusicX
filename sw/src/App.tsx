@@ -50,7 +50,7 @@ import { Sidebar } from './components/Sidebar';
 import { PlayerBar } from './components/PlayerBar';
 import { SongCard } from './components/SongCard';
 import { SongList } from './components/SongList';
-import { YouTubeIframePlayer } from './components/YouTubeIframePlayer';
+import { SoundCloudAudioPlayer } from './components/SoundCloudAudioPlayer';
 import { LyricsModal } from './components/LyricsModal';
 import { QueueDrawer } from './components/QueueDrawer';
 import { PlaylistModal } from './components/PlaylistModal';
@@ -118,6 +118,19 @@ export default function App() {
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
   const [isShuffle, setIsShuffle] = useState<boolean>(false);
   const [seekTime, setSeekTime] = useState<number | null>(null);
+
+  // Stable player callbacks prevent the native audio engine from tearing down
+  // and re-registering media listeners on every React render.
+  const handlePlayerTimeUpdate = useCallback((nextTime: number, nextDuration: number) => {
+    setCurrentTime(nextTime);
+    if (nextDuration > 0) setDuration(nextDuration);
+  }, []);
+  const handlePlayerStateChange = useCallback((playing: boolean) => {
+    setIsPlaying(playing);
+  }, []);
+  const handlePlayerSeekHandled = useCallback(() => {
+    setSeekTime(null);
+  }, []);
 
   // Queue State
   const [queue, setQueue] = useState<Song[]>([]);
@@ -456,7 +469,7 @@ export default function App() {
     try {
       const excluded = Array.from(playedTrackIdsRef.current).join(',');
       const res = await fetch(
-        `/api/related?title=${encodeURIComponent(baseSong.title)}&artist=${encodeURIComponent(baseSong.artist)}&excludeId=${encodeURIComponent(baseSong.id)}&excludeIds=${encodeURIComponent(excluded)}`
+        `/api/related?title=${encodeURIComponent(baseSong.title)}&artist=${encodeURIComponent(baseSong.artist)}&genre=${encodeURIComponent(baseSong.genre || '')}&id=${encodeURIComponent(baseSong.id)}&excludeId=${encodeURIComponent(baseSong.id)}&excludeIds=${encodeURIComponent(excluded)}`
       );
       const data = await res.json();
       const related = (data.songs || []).filter((s: Song) => s.id !== baseSong.id && !playedTrackIdsRef.current.has(s.id));
@@ -541,7 +554,7 @@ export default function App() {
         try {
           const excluded = Array.from(playedTrackIdsRef.current).join(',');
           const res = await fetch(
-            `/api/related?title=${encodeURIComponent(currentSong.title)}&artist=${encodeURIComponent(currentSong.artist)}&excludeId=${encodeURIComponent(currentSong.id)}&excludeIds=${encodeURIComponent(excluded)}`
+            `/api/related?title=${encodeURIComponent(currentSong.title)}&artist=${encodeURIComponent(currentSong.artist)}&genre=${encodeURIComponent(currentSong.genre || '')}&id=${encodeURIComponent(currentSong.id)}&excludeId=${encodeURIComponent(currentSong.id)}&excludeIds=${encodeURIComponent(excluded)}`
           );
           const data = await res.json();
           const related = (data.songs || []).filter((s: Song) =>
@@ -1366,23 +1379,20 @@ export default function App() {
       />
 
       {/* Audio & MediaSession Player Engine */}
-      <YouTubeIframePlayer
+      <SoundCloudAudioPlayer
         currentSong={currentSong}
         isPlaying={isPlaying}
         volume={volume}
         isMuted={isMuted}
         showVideo={showVideo}
         offlineBlobUrl={currentOfflineBlobUrl}
-        onTimeUpdate={(cTime, dur) => {
-          setCurrentTime(cTime);
-          if (dur > 0) setDuration(dur);
-        }}
-        onStateChange={(playing) => setIsPlaying(playing)}
+        onTimeUpdate={handlePlayerTimeUpdate}
+        onStateChange={handlePlayerStateChange}
         onSongEnd={playNextSong}
         onPrevious={playPreviousSong}
         onNext={playNextSong}
         seekTime={seekTime}
-        onSeekHandled={() => setSeekTime(null)}
+        onSeekHandled={handlePlayerSeekHandled}
       />
 
       {/* Bottom Floating Control Dock */}

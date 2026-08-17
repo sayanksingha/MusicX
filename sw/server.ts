@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import ytSearch from 'yt-search';
 import { GoogleGenAI } from '@google/genai';
 
 const app = express();
@@ -131,252 +130,297 @@ app.post('/api/sync/leave', (req, res) => {
 });
 
 
-// Music-first YouTube result filtering.
-// Swargam should surface songs and music videos, not arbitrary long-form videos.
-const BLOCKED_MUSIC_RESULT_TERMS = [
-  'full album', 'album mix', 'mixtape', 'playlist', 'compilation', 'compilations',
-  '1 hour', '2 hour', '3 hour', '4 hour', '5 hour', '8 hour', '10 hour', '24/7',
-  'podcast', 'interview', 'reaction', 'reacts', 'review', 'commentary', 'explained',
-  'documentary', 'tutorial', 'gameplay', 'walkthrough', 'news', 'vlog', 'livestream',
-  'live stream', 'webinar', 'concert full', 'full concert', 'setlist',
-  'karaoke version', 'instrumental mix'
-];
+// SoundCloud music catalog + native streaming.
+// Credentials stay server-side. Search only asks SoundCloud for playable tracks.
+const SOUNDCLOUD_API = 'https://api.soundcloud.com';
+const SOUNDCLOUD_OAUTH = 'https://secure.soundcloud.com/oauth/token';
+let soundCloudToken: { accessToken: string; expiresAt: number } | null = null;
 
-const BLOCKED_MUSIC_WHOLE_WORDS = [
-  'radio', 'mix'
-];
-
-const MUSIC_RESULT_TERMS = [
-  'official audio', 'official music video', 'official video', 'music video',
-  'lyric video', 'lyrics', 'audio', 'visualizer', 'song', 'music', 'mv',
-  'remix', 'single', 'acoustic', 'cover'
-];
-
-function normalizeSearchText(value: string) {
-  return value.toLowerCase().replace(/[\u2018\u2019]/g, "'").trim();
-}
-
-function isLikelyMusicVideo(video: any) {
-  const title = normalizeSearchText(video.title || '');
-  const author = normalizeSearchText(video.author?.name || '');
-  const text = `${title} ${author}`;
-  const seconds = Number(video.seconds || 0);
-
-  // Exclude long-form content. Music videos/audio releases are normally short.
-  if (seconds > 15 * 60) return false;
-  if (seconds > 0 && seconds < 45) return false;
-
-  // Explicitly remove common non-music formats.
-  if (BLOCKED_MUSIC_RESULT_TERMS.some(term => text.includes(term))) return false;
-
-  const words = new Set(text.split(/[^a-z0-9]+/).filter(Boolean));
-  if (BLOCKED_MUSIC_WHOLE_WORDS.some(term => words.has(term))) return false;
-
-  return true;
-}
-
-function musicScore(video: any, query = '') {
-  const title = normalizeSearchText(video.title || '');
-  const author = normalizeSearchText(video.author?.name || '');
-  const text = `${title} ${author}`;
-  let score = 0;
-
-  // Prefer official releases and music-video formats.
-  for (const term of MUSIC_RESULT_TERMS) {
-    if (title.includes(term)) score += term.includes('official') ? 8 : 3;
+async function getSoundCloudToken(): Promise<string> {
+  if (soundCloudToken && soundCloudToken.expiresAt > Date.now() + 60_000) {
+    return soundCloudToken.accessToken;
   }
 
-  if (title.includes('official audio')) score += 10;
-  if (title.includes('official music video')) score += 10;
-  if (title.includes('music video')) score += 8;
-  if (title.includes('lyric video')) score += 5;
-  if (title.includes('audio')) score += 4;
-
-  // Search intent should be rewarded when the title contains query words.
-  const queryWords = normalizeSearchText(query)
-    .split(/\s+/)
-    .filter(w => w.length > 2);
-  for (const word of queryWords) {
-    if (text.includes(word)) score += 2;
+  const clientId = process.env.SOUNDCLOUD_CLIENT_ID;
+  const clientSecret = process.env.SOUNDCLOUD_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error('SoundCloud credentials are not configured. Set SOUNDCLOUD_CLIENT_ID and SOUNDCLOUD_CLIENT_SECRET.');
   }
 
-  // Prefer normal song lengths without excluding longer legitimate tracks.
-  const seconds = Number(video.seconds || 0);
-  if (seconds >= 120 && seconds <= 420) score += 4;
-  else if (seconds > 420 && seconds <= 900) score += 1;
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const response = await fetch(SOUNDCLOUD_OAUTH, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json; charset=utf-8',
+      'content-type': 'application/x-www-form-urlencoded',
+      authorization: `Basic ${basic}`,
+    },
+    body: new URLSearchParams({ grant_type: 'client_credentials' }),
+  });
 
-  return score;
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`SoundCloud token request failed (${response.status}): ${text.slice(0, 300)}`);
+  }
+
+  const data = await response.json();
+  soundCloudToken = {
+    accessToken: data.access_token,
+    expiresAt: Date.now() + Math.max(60, Number(data.expires_in || 3600) - 120) * 1000,
+  };
+  return soundCloudToken.accessToken;
 }
 
-function selectMusicResults(videos: any[], query = '', limit = 25) {
-  return videos
-    .filter(isLikelyMusicVideo)
-    .map(video => ({ video, score: musicScore(video, query) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map(item => item.video);
+async function soundCloudFetch(pathname: string, init: RequestInit = {}) {
+  const token = await getSoundCloudToken();
+  const headers = new Headers(init.headers || {});
+  headers.set('Authorization', `OAuth ${token}`);
+  headers.set('Accept', 'application/json; charset=utf-8');
+  return fetch(`${SOUNDCLOUD_API}${pathname}`, { ...init, headers });
 }
 
-function mapVideoToSong(v: any, fallbackArtist = 'Swargam') {
+const soundCloudSearchCache = new Map<string, { expiresAt: number; songs: SongLike[] }>();
+const SOUNDCLOUD_CACHE_TTL = 5 * 60 * 1000;
+type SongLike = {
+  id: string;
+  title: string;
+  artist: string;
+  channelName: string;
+  channelId?: string;
+  thumbnail: string;
+  duration: number;
+  durationFormatted: string;
+  views?: number;
+  uploadedAt?: string;
+  url: string;
+  genre?: string;
+  source?: string;
+  streamable?: boolean;
+};
+
+function formatDuration(seconds: number) {
+  const total = Math.max(0, Math.round(seconds));
+  const m = Math.floor(total / 60);
+  const s = String(total % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function soundCloudArtwork(url?: string) {
+  if (!url) return 'https://soundcloud.com/images/visual-identity/logo-500.png';
+  return url.replace('-large', '-t500x500').replace('-t300x300', '-t500x500');
+}
+
+function mapSoundCloudTrack(track: any): SongLike {
+  const artist = track.user?.username || track.metadata_artist || 'Unknown Artist';
+  const id = String(track.id ?? track.urn ?? '');
   return {
-    id: v.videoId,
-    title: v.title,
-    artist: v.author?.name || fallbackArtist,
-    channelName: v.author?.name || fallbackArtist,
-    channelId: v.author?.url || '',
-    thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
-    duration: v.seconds || 0,
-    durationFormatted: v.timestamp || '0:00',
-    views: v.views || 0,
-    uploadedAt: v.ago || '',
-    url: v.url || `https://www.youtube.com/watch?v=${v.videoId}`,
+    id: `sc:${id}`,
+    title: track.title || 'Untitled',
+    artist,
+    channelName: artist,
+    channelId: track.user?.urn || (track.user?.id ? String(track.user.id) : ''),
+    thumbnail: soundCloudArtwork(track.artwork_url || track.user?.avatar_url),
+    duration: Math.round(Number(track.duration || 0) / 1000),
+    durationFormatted: formatDuration(Number(track.duration || 0) / 1000),
+    views: track.playback_count || 0,
+    uploadedAt: track.created_at || '',
+    url: track.permalink_url || `https://soundcloud.com/${artist}/${encodeURIComponent(track.title || 'track')}`,
+    genre: track.genre || '',
+    source: 'SoundCloud',
+    streamable: track.access === 'playable' || track.streamable !== false,
   };
 }
 
-// Short-lived in-memory cache keeps repeated searches and live suggestions fast.
-const musicSearchCache = new Map<string, { expiresAt: number; songs: any[] }>();
-const MUSIC_SEARCH_CACHE_TTL = 5 * 60 * 1000;
+function stripSoundCloudId(id: string) {
+  return String(id || '').replace(/^sc:/, '');
+}
 
-function getCachedMusicSearch(query: string) {
-  const key = query.trim().toLowerCase();
-  const hit = musicSearchCache.get(key);
+function getCachedSC(key: string) {
+  const hit = soundCloudSearchCache.get(key);
   if (!hit) return null;
   if (hit.expiresAt <= Date.now()) {
-    musicSearchCache.delete(key);
+    soundCloudSearchCache.delete(key);
     return null;
   }
   return hit.songs;
 }
 
-function setCachedMusicSearch(query: string, songs: any[]) {
-  const key = query.trim().toLowerCase();
-  musicSearchCache.set(key, { expiresAt: Date.now() + MUSIC_SEARCH_CACHE_TTL, songs });
-  if (musicSearchCache.size > 200) {
-    const oldest = musicSearchCache.keys().next().value;
-    if (oldest) musicSearchCache.delete(oldest);
+function setCachedSC(key: string, songs: SongLike[]) {
+  soundCloudSearchCache.set(key, { expiresAt: Date.now() + SOUNDCLOUD_CACHE_TTL, songs });
+  if (soundCloudSearchCache.size > 250) {
+    const oldest = soundCloudSearchCache.keys().next().value;
+    if (oldest) soundCloudSearchCache.delete(oldest);
   }
 }
 
-// Lightweight suggestion endpoint. It returns only a handful of music results
-// and has its own cache so live typing does not compete with full search.
+function rankSoundCloudTracks(tracks: any[], query: string, limit: number) {
+  const q = query.toLowerCase().trim();
+  const words = q.split(/\s+/).filter((w) => w.length > 2);
+  return tracks
+    .filter((t) => t?.access !== 'blocked' && t?.access !== 'preview' && t?.streamable !== false)
+    .filter((t) => Number(t.duration || 0) >= 45_000 && Number(t.duration || 0) <= 20 * 60_000)
+    .map((track) => {
+      const title = String(track.title || '').toLowerCase();
+      const artist = String(track.user?.username || track.metadata_artist || '').toLowerCase();
+      const genre = String(track.genre || '').toLowerCase();
+      let score = 0;
+      if (title === q) score += 20;
+      if (title.includes(q)) score += 12;
+      if (artist.includes(q)) score += 8;
+      if (genre.includes(q)) score += 4;
+      for (const word of words) if (title.includes(word) || artist.includes(word)) score += 2;
+      if (track.kind === 'track') score += 2;
+      if (track.playback_count) score += Math.min(5, Math.log10(Number(track.playback_count) + 1));
+      return { track, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ track }) => mapSoundCloudTrack(track));
+}
+
+async function searchSoundCloud(query: string, limit = 25) {
+  const key = `${query.toLowerCase().trim()}|${limit}`;
+  const cached = getCachedSC(key);
+  if (cached) return cached;
+
+  const params = new URLSearchParams({
+    q: query,
+    access: 'playable',
+    limit: String(Math.min(200, Math.max(limit * 2, 20))),
+    linked_partitioning: 'true',
+  });
+  const response = await soundCloudFetch(`/tracks?${params.toString()}`);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`SoundCloud search failed (${response.status}): ${text.slice(0, 300)}`);
+  }
+  const data = await response.json();
+  const songs = rankSoundCloudTracks(data.collection || [], query, limit);
+  setCachedSC(key, songs);
+  return songs;
+}
+
+// Live music suggestions.
 app.get('/api/suggest', async (req, res) => {
   try {
-    const query = (req.query.q as string || '').trim();
+    const query = String(req.query.q || '').trim();
     if (query.length < 2) return res.json({ songs: [] });
-
-    const cached = getCachedMusicSearch(`suggest:${query}`);
-    if (cached) return res.json({ songs: cached.slice(0, 6) });
-
-    const searchResult = await ytSearch(`${query} song`);
-    const videos = selectMusicResults(searchResult.videos || [], query, 6);
-    const songs = videos.map((v) => mapVideoToSong(v));
-    setCachedMusicSearch(`suggest:${query}`, songs);
-    res.json({ songs });
+    res.json({ songs: (await searchSoundCloud(query, 6)).slice(0, 6) });
   } catch (error: any) {
-    res.status(200).json({ songs: [] });
+    console.error('SoundCloud suggest:', error?.message || error);
+    res.json({ songs: [] });
   }
 });
 
-// 1. Song Search API
+// Music search.
 app.get('/api/search', async (req, res) => {
   try {
-    const query = (req.query.q as string || '').trim();
-    if (!query) {
-      return res.json({ songs: [] });
-    }
-
+    const query = String(req.query.q || '').trim();
+    if (!query) return res.json({ songs: [] });
     const requestedLimit = Math.min(25, Math.max(1, Number(req.query.limit) || 25));
-    const cached = getCachedMusicSearch(query);
-    if (cached) return res.json({ songs: cached.slice(0, requestedLimit) });
-
-    const musicQuery = `${query} song official audio music video`;
-    const searchResult = await ytSearch(musicQuery);
-    const videos = selectMusicResults(searchResult.videos || [], query, 25);
-    const songs = videos.map((v) => mapVideoToSong(v));
-    setCachedMusicSearch(query, songs);
-
-    res.json({ songs: songs.slice(0, requestedLimit) });
+    res.json({ songs: (await searchSoundCloud(query, requestedLimit)).slice(0, requestedLimit) });
   } catch (error: any) {
-    console.error('Error in /api/search:', error);
-    res.status(500).json({ error: 'Failed to search music', details: error?.message });
+    console.error('SoundCloud search:', error?.message || error);
+    res.status(500).json({ error: 'SoundCloud search failed', details: error?.message });
   }
 });
 
-// 2. Trending & Curated Playlists
+// Curated category searches.
 app.get('/api/trending', async (req, res) => {
   try {
-    const category = (req.query.category as string || 'top-hits').toLowerCase();
-
-    let query = 'top music hits 2026';
-    if (category === 'lofi') query = 'lofi chill beats live study relax';
-    else if (category === 'pop') query = 'popular pop songs official music video';
-    else if (category === 'hiphop') query = 'top hip hop rap songs';
-    else if (category === 'chill') query = 'chill acoustic songs acoustic mix';
-    else if (category === 'rock') query = 'classic rock hits rock anthems';
-    else if (category === 'indie') query = 'indie pop indie folk discoveries';
-    else if (category === 'synthwave') query = 'synthwave retrowave 80s synth music';
-    else if (category === 'workout') query = 'workout motivation gym hype songs';
-    else if (category === 'kpop') query = 'top kpop hits songs';
-    else if (category === 'classical') query = 'classical piano study relax music';
-
-    const musicQuery = `${query} song official audio music video`;
-    const searchResult = await ytSearch(musicQuery);
-    const videos = selectMusicResults(searchResult.videos || [], category, 20);
-
-    const songs = videos.map((v) => mapVideoToSong(v, 'Various Artists'))
-
+    const category = String(req.query.category || 'top-hits').toLowerCase();
+    const queries: Record<string, string> = {
+      'top-hits': 'top hits songs',
+      lofi: 'lofi chill beats',
+      pop: 'popular pop songs',
+      hiphop: 'hip hop rap',
+      chill: 'chill acoustic',
+      rock: 'rock songs',
+      indie: 'indie pop',
+      synthwave: 'synthwave',
+      workout: 'workout music',
+      kpop: 'kpop',
+      classical: 'classical piano',
+    };
+    const songs = await searchSoundCloud(queries[category] || category, 20);
     res.json({ category, songs });
   } catch (error: any) {
-    console.error('Error in /api/trending:', error);
-    res.status(500).json({ error: 'Failed to fetch trending songs' });
+    console.error('SoundCloud trending:', error?.message || error);
+    res.status(500).json({ error: 'Failed to fetch music' });
   }
 });
 
-// 3. Related Songs (For Autoplay Queue)
+// Same-genre / related radio using SoundCloud's related-tracks endpoint first,
+// with a genre search fallback. The current track is always excluded.
 app.get('/api/related', async (req, res) => {
   try {
-    const title = (req.query.title as string || '').trim();
-    const artist = (req.query.artist as string || '').trim();
-    const excludeId = String(req.query.excludeId || '');
-    const excludeIds = new Set(
-      String(req.query.excludeIds || '')
-        .split(',')
-        .map((id) => id.trim())
-        .filter(Boolean)
-    );
-    if (excludeId) excludeIds.add(excludeId);
+    const id = stripSoundCloudId(String(req.query.id || req.query.excludeId || ''));
+    const title = String(req.query.title || '').trim();
+    const artist = String(req.query.artist || '').trim();
+    const genre = String(req.query.genre || '').trim();
+    const excludeIds = new Set(String(req.query.excludeIds || '').split(',').map((x) => x.trim()).filter(Boolean));
+    if (id) excludeIds.add(`sc:${id}`);
 
-    // Keep the radio experience music-first and artist/track-adjacent.
-    // The search terms bias toward the same musical profile without copying Spotify's implementation.
-    const queries = [
-      `${artist} similar songs official audio`,
-      `${artist} ${title} similar music`,
-      `${artist} songs same genre official audio`,
-    ];
-
-    const collected: any[] = [];
-    for (const query of queries) {
-      const searchResult = await ytSearch(query);
-      collected.push(...(searchResult.videos || []));
-      if (collected.length >= 40) break;
+    let candidates: SongLike[] = [];
+    if (id) {
+      const response = await soundCloudFetch(`/tracks/${encodeURIComponent(id)}/related?access=playable&limit=50&linked_partitioning=true`);
+      if (response.ok) {
+        const data = await response.json();
+        candidates = rankSoundCloudTracks(data.collection || [], `${artist} ${genre} ${title}`, 30);
+      }
     }
 
-    const seen = new Set<string>();
-    const unique = collected.filter((v) => {
-      if (!v?.videoId || seen.has(v.videoId) || excludeIds.has(v.videoId)) return false;
-      seen.add(v.videoId);
-      return true;
-    });
+    if (candidates.length < 12) {
+      const q = genre ? `${genre} ${artist}` : `${artist} ${title}`;
+      candidates = [...candidates, ...(await searchSoundCloud(q, 30))];
+    }
 
-    const videos = selectMusicResults(unique, `${artist} ${title}`, 12);
-    const songs = videos
-      .filter((v) => !excludeIds.has(v.videoId))
-      .map((v) => mapVideoToSong(v, artist || 'Swargam'));
-
-    res.json({ songs });
+    const unique = new Map<string, SongLike>();
+    for (const song of candidates) {
+      if (!song.id || excludeIds.has(song.id) || unique.has(song.id)) continue;
+      unique.set(song.id, song);
+    }
+    res.json({ songs: Array.from(unique.values()).slice(0, 12) });
   } catch (error: any) {
-    console.error('Error in /api/related:', error);
+    console.error('SoundCloud related:', error?.message || error);
     res.json({ songs: [] });
+  }
+});
+
+// Resolve a streamable SoundCloud track to an AAC HLS stream URL.
+// The access token remains server-side; only the signed playback URL is returned.
+async function resolveSoundCloudStream(id: string) {
+  const response = await soundCloudFetch(`/tracks/${encodeURIComponent(id)}/streams`);
+  if (!response.ok) throw new Error(`SoundCloud stream lookup failed: ${response.status}`);
+  const data = await response.json();
+  return data.hls_aac_160_url || data.hls_aac_96_url || data.http_mp3_128_url || data.hls_mp3_128_url;
+}
+
+app.get('/api/stream/:id', async (req, res) => {
+  try {
+    const id = stripSoundCloudId(String(req.params.id || ''));
+    if (!id) return res.status(400).end();
+    const streamUrl = await resolveSoundCloudStream(id);
+    if (!streamUrl) return res.status(404).json({ error: 'No playable stream for this track' });
+    res.setHeader('Cache-Control', 'private, max-age=30');
+    res.redirect(302, streamUrl);
+  } catch (error: any) {
+    console.error('SoundCloud stream:', error?.message || error);
+    res.status(502).json({ error: 'Unable to resolve stream' });
+  }
+});
+
+app.get('/api/stream-info', async (req, res) => {
+  try {
+    const id = stripSoundCloudId(String(req.query.id || ''));
+    if (!id) return res.status(400).json({ error: 'Track id is required' });
+    const streamUrl = await resolveSoundCloudStream(id);
+    if (!streamUrl) return res.status(404).json({ error: 'No playable stream for this track' });
+    res.setHeader('Cache-Control', 'private, max-age=30');
+    res.json({ url: streamUrl, type: streamUrl.includes('.m3u8') ? 'hls' : 'progressive', source: 'SoundCloud' });
+  } catch (error: any) {
+    console.error('SoundCloud stream-info:', error?.message || error);
+    res.status(502).json({ error: 'Unable to resolve stream' });
   }
 });
 

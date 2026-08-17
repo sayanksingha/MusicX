@@ -10,6 +10,8 @@ export interface Song {
   views?: number;
   uploadedAt?: string;
   url: string;
+  genre?: string;
+  source?: 'SoundCloud' | string;
   isOffline?: boolean;
 }
 
