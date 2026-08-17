@@ -131,6 +131,108 @@ app.post('/api/sync/leave', (req, res) => {
 });
 
 
+// Music-first YouTube result filtering.
+// Swargam should surface songs and music videos, not arbitrary long-form videos.
+const BLOCKED_MUSIC_RESULT_TERMS = [
+  'full album', 'album mix', 'mixtape', 'playlist', 'compilation', 'compilations',
+  '1 hour', '2 hour', '3 hour', '4 hour', '5 hour', '8 hour', '10 hour', '24/7',
+  'podcast', 'interview', 'reaction', 'reacts', 'review', 'commentary', 'explained',
+  'documentary', 'tutorial', 'gameplay', 'walkthrough', 'news', 'vlog', 'livestream',
+  'live stream', 'webinar', 'concert full', 'full concert', 'setlist',
+  'karaoke version', 'instrumental mix'
+];
+
+const BLOCKED_MUSIC_WHOLE_WORDS = [
+  'radio', 'mix'
+];
+
+const MUSIC_RESULT_TERMS = [
+  'official audio', 'official music video', 'official video', 'music video',
+  'lyric video', 'lyrics', 'audio', 'visualizer', 'song', 'music', 'mv',
+  'remix', 'single', 'acoustic', 'cover'
+];
+
+function normalizeSearchText(value: string) {
+  return value.toLowerCase().replace(/[\u2018\u2019]/g, "'").trim();
+}
+
+function isLikelyMusicVideo(video: any) {
+  const title = normalizeSearchText(video.title || '');
+  const author = normalizeSearchText(video.author?.name || '');
+  const text = `${title} ${author}`;
+  const seconds = Number(video.seconds || 0);
+
+  // Exclude long-form content. Music videos/audio releases are normally short.
+  if (seconds > 15 * 60) return false;
+  if (seconds > 0 && seconds < 45) return false;
+
+  // Explicitly remove common non-music formats.
+  if (BLOCKED_MUSIC_RESULT_TERMS.some(term => text.includes(term))) return false;
+
+  const words = new Set(text.split(/[^a-z0-9]+/).filter(Boolean));
+  if (BLOCKED_MUSIC_WHOLE_WORDS.some(term => words.has(term))) return false;
+
+  return true;
+}
+
+function musicScore(video: any, query = '') {
+  const title = normalizeSearchText(video.title || '');
+  const author = normalizeSearchText(video.author?.name || '');
+  const text = `${title} ${author}`;
+  let score = 0;
+
+  // Prefer official releases and music-video formats.
+  for (const term of MUSIC_RESULT_TERMS) {
+    if (title.includes(term)) score += term.includes('official') ? 8 : 3;
+  }
+
+  if (title.includes('official audio')) score += 10;
+  if (title.includes('official music video')) score += 10;
+  if (title.includes('music video')) score += 8;
+  if (title.includes('lyric video')) score += 5;
+  if (title.includes('audio')) score += 4;
+
+  // Search intent should be rewarded when the title contains query words.
+  const queryWords = normalizeSearchText(query)
+    .split(/\s+/)
+    .filter(w => w.length > 2);
+  for (const word of queryWords) {
+    if (text.includes(word)) score += 2;
+  }
+
+  // Prefer normal song lengths without excluding longer legitimate tracks.
+  const seconds = Number(video.seconds || 0);
+  if (seconds >= 120 && seconds <= 420) score += 4;
+  else if (seconds > 420 && seconds <= 900) score += 1;
+
+  return score;
+}
+
+function selectMusicResults(videos: any[], query = '', limit = 25) {
+  return videos
+    .filter(isLikelyMusicVideo)
+    .map(video => ({ video, score: musicScore(video, query) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(item => item.video);
+}
+
+function mapVideoToSong(v: any, fallbackArtist = 'Swargam') {
+  return {
+    id: v.videoId,
+    title: v.title,
+    artist: v.author?.name || fallbackArtist,
+    channelName: v.author?.name || fallbackArtist,
+    channelId: v.author?.url || '',
+    thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
+    duration: v.seconds || 0,
+    durationFormatted: v.timestamp || '0:00',
+    views: v.views || 0,
+    uploadedAt: v.ago || '',
+    url: v.url || `https://www.youtube.com/watch?v=${v.videoId}`,
+  };
+}
+
 // 1. Song Search API
 app.get('/api/search', async (req, res) => {
   try {
@@ -139,22 +241,11 @@ app.get('/api/search', async (req, res) => {
       return res.json({ songs: [] });
     }
 
-    const searchResult = await ytSearch(query);
-    const videos = (searchResult.videos || []).slice(0, 25);
+    const musicQuery = `${query} song official audio music video`;
+    const searchResult = await ytSearch(musicQuery);
+    const videos = selectMusicResults(searchResult.videos || [], query, 25);
 
-    const songs = videos.map((v) => ({
-      id: v.videoId,
-      title: v.title,
-      artist: v.author?.name || 'Unknown Artist',
-      channelName: v.author?.name || 'Swargam',
-      channelId: v.author?.url || '',
-      thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
-      duration: v.seconds || 0,
-      durationFormatted: v.timestamp || '0:00',
-      views: v.views || 0,
-      uploadedAt: v.ago || '',
-      url: v.url || `https://www.youtube.com/watch?v=${v.videoId}`,
-    }));
+    const songs = videos.map((v) => mapVideoToSong(v));
 
     res.json({ songs });
   } catch (error: any) {
@@ -180,21 +271,11 @@ app.get('/api/trending', async (req, res) => {
     else if (category === 'kpop') query = 'top kpop hits songs';
     else if (category === 'classical') query = 'classical piano study relax music';
 
-    const searchResult = await ytSearch(query);
-    const videos = (searchResult.videos || []).slice(0, 20);
+    const musicQuery = `${query} song official audio music video`;
+    const searchResult = await ytSearch(musicQuery);
+    const videos = selectMusicResults(searchResult.videos || [], category, 20);
 
-    const songs = videos.map((v) => ({
-      id: v.videoId,
-      title: v.title,
-      artist: v.author?.name || 'Various Artists',
-      channelName: v.author?.name || 'Swargam',
-      thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
-      duration: v.seconds || 0,
-      durationFormatted: v.timestamp || '0:00',
-      views: v.views || 0,
-      uploadedAt: v.ago || '',
-      url: v.url || `https://www.youtube.com/watch?v=${v.videoId}`,
-    }));
+    const songs = videos.map((v) => mapVideoToSong(v, 'Various Artists'))
 
     res.json({ category, songs });
   } catch (error: any) {
@@ -209,22 +290,12 @@ app.get('/api/related', async (req, res) => {
     const title = (req.query.title as string || '').trim();
     const artist = (req.query.artist as string || '').trim();
 
-    const query = `${title} ${artist} similar songs mix audio`;
+    const query = `${title} ${artist} similar song official audio`;
     const searchResult = await ytSearch(query);
-    const videos = (searchResult.videos || []).slice(1, 10); // Skip first to avoid duplicate
+    const videos = selectMusicResults(searchResult.videos || [], `${title} ${artist}`, 12)
+      .filter((v) => v.videoId !== req.query.excludeId);
 
-    const songs = videos.map((v) => ({
-      id: v.videoId,
-      title: v.title,
-      artist: v.author?.name || artist || 'Swargam',
-      channelName: v.author?.name || 'Swargam',
-      thumbnail: v.thumbnail || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
-      duration: v.seconds || 0,
-      durationFormatted: v.timestamp || '0:00',
-      views: v.views || 0,
-      uploadedAt: v.ago || '',
-      url: v.url || `https://www.youtube.com/watch?v=${v.videoId}`,
-    }));
+    const songs = videos.map((v) => mapVideoToSong(v, artist || 'Swargam'))
 
     res.json({ songs });
   } catch (error: any) {
