@@ -1,0 +1,6 @@
+{
+  "name": "musicx",
+  "description": "Spotify-inspired high fidelity music streaming experience with user accounts, custom playlists, song radio, sleep timer, crossfade audio settings, and offline playback.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

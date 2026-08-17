@@ -1,0 +1,135 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  --mx-green: #1ed760;
+  --mx-green-soft: rgba(30, 215, 96, .18);
+  --mx-panel: rgba(18, 18, 18, .78);
+  --mx-border: rgba(255,255,255,.08);
+}
+
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(30,215,96,.13), transparent 28%),
+    radial-gradient(circle at 88% 18%, rgba(99,102,241,.12), transparent 25%),
+    radial-gradient(circle at 55% 95%, rgba(236,72,153,.08), transparent 30%),
+    #070707;
+  color: #fff;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: -25%;
+  z-index: -1;
+  pointer-events: none;
+  background: conic-gradient(from 180deg at 50% 50%, rgba(30,215,96,.06), transparent 25%, rgba(99,102,241,.06), transparent 50%, rgba(236,72,153,.05), transparent 75%, rgba(30,215,96,.06));
+  filter: blur(70px);
+  animation: mxAmbient 18s linear infinite;
+}
+
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 999px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.28); }
+
+button, a, input[type="range"] { -webkit-tap-highlight-color: transparent; }
+button { transition: transform .18s ease, background-color .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease; }
+button:active { transform: scale(.96); }
+
+/* Premium glass surfaces */
+.mx-glass {
+  background: linear-gradient(145deg, rgba(255,255,255,.075), rgba(255,255,255,.025));
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: 0 20px 60px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04);
+  backdrop-filter: blur(18px);
+}
+
+/* Song cards become tactile / lift on hover */
+.mx-song-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 18px !important;
+  background: linear-gradient(145deg, rgba(30,30,30,.94), rgba(14,14,14,.96)) !important;
+  border-color: rgba(255,255,255,.07) !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,.18);
+  transform: translateZ(0);
+}
+.mx-song-card::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  background: radial-gradient(circle at var(--mx-x, 50%) var(--mx-y, 10%), rgba(30,215,96,.22), transparent 34%);
+  opacity: 0;
+  transition: opacity .35s ease;
+}
+.mx-song-card:hover {
+  transform: translateY(-7px) scale(1.012);
+  border-color: rgba(30,215,96,.28) !important;
+  box-shadow: 0 24px 55px rgba(0,0,0,.45), 0 0 0 1px rgba(30,215,96,.06), 0 0 38px rgba(30,215,96,.08);
+}
+.mx-song-card:hover::before { opacity: 1; }
+.mx-song-card .mx-cover { box-shadow: 0 10px 28px rgba(0,0,0,.38); }
+.mx-song-card:hover .mx-cover img { transform: scale(1.09); filter: saturate(1.12) contrast(1.03); }
+.mx-song-card .mx-cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 55%, rgba(0,0,0,.35));
+  opacity: .7;
+}
+
+/* Playing indicator */
+.mx-playing {
+  box-shadow: 0 0 0 1px rgba(30,215,96,.35), 0 0 32px rgba(30,215,96,.12) !important;
+}
+.mx-playing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  border: 1px solid rgba(30,215,96,.22);
+  animation: mxPulse 2s ease-in-out infinite;
+}
+
+/* Animated visualizer */
+.mx-bars { display: flex; align-items: end; gap: 3px; height: 18px; }
+.mx-bars span { width: 3px; border-radius: 999px; background: var(--mx-green); animation: mxBars .8s ease-in-out infinite alternate; box-shadow: 0 0 10px rgba(30,215,96,.35); }
+.mx-bars span:nth-child(2) { animation-delay: -.25s; }
+.mx-bars span:nth-child(3) { animation-delay: -.5s; }
+.mx-bars span:nth-child(4) { animation-delay: -.15s; }
+
+/* Search focus */
+input:focus { outline: none; }
+
+/* Range controls */
+input[type="range"] { accent-color: var(--mx-green); cursor: pointer; }
+input[type="range"]::-webkit-slider-thumb { transition: transform .15s ease; }
+input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.25); }
+
+/* Page entrance */
+.animate-fade-in { animation: mxFadeUp .42s cubic-bezier(.2,.8,.2,1) both; }
+.animate-bounce-in { animation: mxToast .42s cubic-bezier(.2,.9,.2,1) both; }
+
+/* Buttons with green glow */
+.mx-primary:hover { box-shadow: 0 10px 30px rgba(30,215,96,.22); }
+
+@keyframes mxFadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes mxToast { from { opacity: 0; transform: translateY(-10px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes mxPulse { 0%,100% { opacity: .25; transform: scale(1); } 50% { opacity: .7; transform: scale(1.006); } }
+@keyframes mxBars { from { height: 4px; } to { height: 18px; } }
+@keyframes mxAmbient { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
