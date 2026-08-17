@@ -1,5 +1,5 @@
-import React from 'react';
-import { Play, Plus, Heart, ListPlus, Download, CheckCircle2, Radio, Share2 } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Play, Plus, Heart, ListPlus, Download, CheckCircle2, Radio, Share2, FileText } from 'lucide-react';
 import { Song } from '../types';
 
 interface SongCardProps {
@@ -15,6 +15,7 @@ interface SongCardProps {
   onDownloadToggle?: (song: Song) => void;
   onStartRadio?: (song: Song) => void;
   onShare?: (song: Song) => void;
+  onLyrics?: (song: Song) => void;
 }
 
 const SongCardComponent: React.FC<SongCardProps> = ({
@@ -30,7 +31,26 @@ const SongCardComponent: React.FC<SongCardProps> = ({
   onDownloadToggle,
   onStartRadio,
   onShare,
+  onLyrics,
 }) => {
+  const touchHandledRef = useRef(false);
+  const triggerPlay = (song: Song) => {
+    onPlay(song);
+  };
+  const handlePlayPointerDown = (e: React.PointerEvent, song: Song) => {
+    if (e.pointerType === 'touch') {
+      touchHandledRef.current = true;
+      triggerPlay(song);
+    }
+  };
+  const handlePlayClick = (song: Song) => {
+    if (touchHandledRef.current) {
+      touchHandledRef.current = false;
+      return;
+    }
+    triggerPlay(song);
+  };
+
   return (
     <div className="mx-song-card group relative bg-[#181818] hover:bg-[#282828] border border-white/5 rounded-lg p-3.5 transition-all duration-300 flex flex-col justify-between shadow-lg hover:shadow-2xl">
       {/* Cover Image Container */}
@@ -56,7 +76,8 @@ const SongCardComponent: React.FC<SongCardProps> = ({
 
         {/* Spotify Green Floating Play Overlay Button */}
         <button
-          onClick={() => onPlay(song)}
+          onPointerDown={(e) => handlePlayPointerDown(e, song)}
+          onClick={() => handlePlayClick(song)}
           className={`absolute bottom-2 right-2 w-11 h-11 rounded-full bg-[#1DB954] hover:bg-[#1ed760] text-black flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-105 ${
             isCurrentSong
               ? 'opacity-100 translate-y-0 shadow-lg shadow-[#1DB954]/30'
@@ -83,7 +104,8 @@ const SongCardComponent: React.FC<SongCardProps> = ({
       {/* Info Block */}
       <div className="min-w-0 flex-1">
         <h3
-          onClick={() => onPlay(song)}
+          onPointerDown={(e) => handlePlayPointerDown(e, song)}
+          onClick={() => handlePlayClick(song)}
           className={`text-sm font-bold truncate cursor-pointer hover:underline ${
             isCurrentSong ? 'text-[#1DB954]' : 'text-white'
           }`}
@@ -141,6 +163,16 @@ const SongCardComponent: React.FC<SongCardProps> = ({
             <Plus className="w-4 h-4" />
           </button>
 
+          {onLyrics && (
+            <button
+              onClick={() => onLyrics(song)}
+              className="p-1 rounded text-neutral-400 hover:text-[#1DB954] hover:bg-neutral-800 transition"
+              title="Open Lyrics"
+            >
+              <FileText className="w-4 h-4" />
+            </button>
+          )}
+
           {onShare && (
             <button
               onClick={() => onShare(song)}
@@ -156,12 +188,4 @@ const SongCardComponent: React.FC<SongCardProps> = ({
   );
 };
 
-
-// Playback position changes every second; don't rerender hundreds of cards for it.
-export const SongCard = React.memo(SongCardComponent, (a, b) =>
-  a.song.id === b.song.id &&
-  a.isCurrentSong === b.isCurrentSong &&
-  a.isPlaying === b.isPlaying &&
-  a.isLiked === b.isLiked &&
-  a.isDownloaded === b.isDownloaded
-);
+export const SongCard = React.memo(SongCardComponent);

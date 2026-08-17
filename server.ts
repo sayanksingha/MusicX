@@ -217,24 +217,6 @@ function selectMusicResults(videos: any[], query = '', limit = 25) {
     .map(item => item.video);
 }
 
-const searchCache = new Map<string, { expiresAt: number; songs: any[] }>();
-const searchInflight = new Map<string, Promise<any[]>>();
-const SEARCH_CACHE_TTL = 60 * 1000;
-
-function cachedSearch(key: string, fn: () => Promise<any[]>) {
-  const now = Date.now();
-  const cached = searchCache.get(key);
-  if (cached && cached.expiresAt > now) return Promise.resolve(cached.songs);
-  const running = searchInflight.get(key);
-  if (running) return running;
-  const promise = fn().then((songs) => {
-    searchCache.set(key, { expiresAt: Date.now() + SEARCH_CACHE_TTL, songs });
-    return songs;
-  }).finally(() => searchInflight.delete(key));
-  searchInflight.set(key, promise);
-  return promise;
-}
-
 function mapVideoToSong(v: any, fallbackArtist = 'Swargam') {
   return {
     id: v.videoId,
@@ -251,6 +233,30 @@ function mapVideoToSong(v: any, fallbackArtist = 'Swargam') {
   };
 }
 
+// Short-lived in-memory cache keeps repeated searches and live suggestions fast.
+const musicSearchCache = new Map<string, { expiresAt: number; songs: any[] }>();
+const MUSIC_SEARCH_CACHE_TTL = 5 * 60 * 1000;
+
+function getCachedMusicSearch(query: string) {
+  const key = query.trim().toLowerCase();
+  const hit = musicSearchCache.get(key);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    musicSearchCache.delete(key);
+    return null;
+  }
+  return hit.songs;
+}
+
+function setCachedMusicSearch(query: string, songs: any[]) {
+  const key = query.trim().toLowerCase();
+  musicSearchCache.set(key, { expiresAt: Date.now() + MUSIC_SEARCH_CACHE_TTL, songs });
+  if (musicSearchCache.size > 200) {
+    const oldest = musicSearchCache.keys().next().value;
+    if (oldest) musicSearchCache.delete(oldest);
+  }
+}
+
 // 1. Song Search API
 app.get('/api/search', async (req, res) => {
   try {
@@ -259,15 +265,15 @@ app.get('/api/search', async (req, res) => {
       return res.json({ songs: [] });
     }
 
-    const suggest = String(req.query.suggest || '') === '1';
-    const requestedLimit = Math.min(suggest ? 6 : 25, Math.max(1, Number(req.query.limit) || (suggest ? 6 : 25)));
+    const requestedLimit = Math.min(25, Math.max(1, Number(req.query.limit) || 25));
+    const cached = getCachedMusicSearch(query);
+    if (cached) return res.json({ songs: cached.slice(0, requestedLimit) });
+
     const musicQuery = `${query} song official audio music video`;
-    const cacheKey = `${suggest ? 'suggest' : 'search'}:${query.toLowerCase()}`;
-    const songs = await cachedSearch(cacheKey, async () => {
-      const searchResult = await ytSearch(musicQuery);
-      const videos = selectMusicResults(searchResult.videos || [], query, requestedLimit);
-      return videos.map((v) => mapVideoToSong(v));
-    });
+    const searchResult = await ytSearch(musicQuery);
+    const videos = selectMusicResults(searchResult.videos || [], query, 25);
+    const songs = videos.map((v) => mapVideoToSong(v));
+    setCachedMusicSearch(query, songs);
 
     res.json({ songs: songs.slice(0, requestedLimit) });
   } catch (error: any) {

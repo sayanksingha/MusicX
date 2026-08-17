@@ -49,9 +49,6 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({
             <div>
               <h3 className="font-bold text-white text-lg flex items-center gap-2">
                 <span>Audio & Equalizer</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Spotify Premium Engine
-                </span>
               </h3>
               <p className="text-xs text-slate-400">Customize sound playback & quality</p>
             </div>

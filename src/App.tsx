@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Sparkles,
   Compass,
@@ -89,8 +89,6 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<Song[]>([]);
   const [searchSuggestions, setSearchSuggestions] = useState<Song[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const searchCacheRef = React.useRef<Map<string, Song[]>>(new Map());
-  const searchInflightRef = React.useRef<Map<string, AbortController>>(new Map());
 
   // Featured / Trending Songs
   const [trendingSongs, setTrendingSongs] = useState<Song[]>([]);
@@ -128,6 +126,7 @@ export default function App() {
 
   // UI Panels / Modals
   const [showLyrics, setShowLyrics] = useState<boolean>(false);
+  const [lyricsSong, setLyricsSong] = useState<Song | null>(null);
   const [showQueue, setShowQueue] = useState<boolean>(false);
   const [showVideo, setShowVideo] = useState<boolean>(false);
   const [showNowPlaying, setShowNowPlaying] = useState<boolean>(false);
@@ -309,78 +308,59 @@ export default function App() {
     fetchTrending(genreId);
   };
 
-  // Fast live suggestions: paint local matches immediately, then refresh from
-  // the server after the user pauses. This keeps typing responsive even on a
-  // slow mobile connection.
+  // Live music suggestions: debounce + cache so typing stays responsive.
+  const suggestionCacheRef = React.useRef<Map<string, Song[]>>(new Map());
   useEffect(() => {
-    const query = searchQuery.trim().replace(/\s+/g, ' ');
+    const query = searchQuery.trim();
     if (query.length < 2) {
       setSearchSuggestions([]);
       return;
     }
 
-    const key = query.toLowerCase();
-    const localPool = [...searchResults, ...trendingSongs, ...historySongs, ...likedSongs, ...queue];
-    const unique = new Map<string, Song>();
-    for (const song of localPool) unique.set(song.id, song);
-    const localMatches = Array.from(unique.values())
-      .filter((song) => `${song.title} ${song.artist}`.toLowerCase().includes(key))
-      .slice(0, 6);
-    if (localMatches.length) setSearchSuggestions(localMatches);
-
-    const cached = searchCacheRef.current.get(`suggest:${key}`);
+    const cacheKey = query.toLowerCase();
+    const cached = suggestionCacheRef.current.get(cacheKey);
     if (cached) {
-      setSearchSuggestions(cached.slice(0, 6));
+      setSearchSuggestions(cached);
       return;
     }
 
+    // Show already-known local matches immediately while the server fetches fresh results.
+    const localMatches = Array.from(new Map(
+      [...searchResults, ...trendingSongs, ...likedSongs, ...historySongs].map((song) => [song.id, song])
+    ).values()).filter((song) =>
+      `${song.title} ${song.artist}`.toLowerCase().includes(cacheKey)
+    ).slice(0, 5);
+    if (localMatches.length) setSearchSuggestions(localMatches);
+
+    const controller = new AbortController();
     const timer = window.setTimeout(async () => {
-      const previous = searchInflightRef.current.get(key);
-      previous?.abort();
-      const controller = new AbortController();
-      searchInflightRef.current.set(key, controller);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=6&suggest=1`, { signal: controller.signal });
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=5`, { signal: controller.signal });
         if (!res.ok) return;
         const data = await res.json();
-        const songs = (data.songs || []).slice(0, 6);
-        searchCacheRef.current.set(`suggest:${key}`, songs);
-        if (searchQuery.trim().replace(/\s+/g, ' ').toLowerCase() === key) {
-          setSearchSuggestions(songs.length ? songs : localMatches);
-        }
+        const songs = (data.songs || []).slice(0, 5);
+        suggestionCacheRef.current.set(cacheKey, songs);
+        setSearchSuggestions(songs);
       } catch (e: any) {
         if (e?.name !== 'AbortError') console.error('Live suggestions failed:', e);
-      } finally {
-        if (searchInflightRef.current.get(key) === controller) searchInflightRef.current.delete(key);
       }
-    }, 350);
+    }, 450);
 
-    return () => window.clearTimeout(timer);
-  }, [searchQuery, searchResults, trendingSongs, historySongs, likedSongs, queue]);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery, searchResults, trendingSongs, likedSongs, historySongs]);
 
   // Search Submit
   const handleSearchSubmit = async (query: string) => {
-    const normalized = query.trim().replace(/\s+/g, ' ');
-    if (!normalized) return;
+    if (!query.trim()) return;
+    setIsSearching(true);
     setActiveTab('search');
-
-    const key = normalized.toLowerCase();
-    const cached = searchCacheRef.current.get(key);
-    const suggested = searchCacheRef.current.get(`suggest:${key}`);
-    if (cached) {
-      setSearchResults(cached);
-      return;
-    }
-    if (suggested?.length) setSearchResults(suggested);
-
-    setIsSearching(!suggested?.length);
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(normalized)}&limit=25`);
-      if (!res.ok) throw new Error(`Search failed: ${res.status}`);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
       const data = await res.json();
-      const songs = data.songs || [];
-      searchCacheRef.current.set(key, songs);
-      setSearchResults(songs);
+      setSearchResults(data.songs || []);
     } catch (e) {
       console.error('Failed to search songs:', e);
     } finally {
@@ -419,10 +399,8 @@ export default function App() {
       }
 
       // Save to history
-      window.setTimeout(() => {
-        const updatedHistory = addToHistory(song);
-        setHistorySongs(updatedHistory);
-      }, 0);
+      const updatedHistory = addToHistory(song);
+      setHistorySongs(updatedHistory);
 
       if (customQueue) {
         setQueue(customQueue);
@@ -445,10 +423,10 @@ export default function App() {
   );
 
   // Add song to queue
-  const addToQueue = (song: Song) => {
+  const addToQueue = useCallback((song: Song) => {
     setQueue((prev) => [...prev, song]);
     showToast(`Added "${song.title}" to queue`);
-  };
+  }, [showToast]);
 
   // Start Song Radio Mix
   const handleStartRadio = useCallback(async (targetSong?: Song) => {
@@ -488,6 +466,11 @@ export default function App() {
       showToast(`Shared: ${song.title}`);
     }
   }, [showToast]);
+
+  const openLyrics = useCallback((song: Song) => {
+    setLyricsSong(song);
+    setShowLyrics(true);
+  }, []);
 
   // Play Next
   const playNextSong = useCallback(async () => {
@@ -592,13 +575,13 @@ export default function App() {
   }, [currentTime, queueIndex, queue, offlineTracks]);
 
   // Toggle Like
-  const handleLikeToggle = (song: Song) => {
+  const handleLikeToggle = useCallback((song: Song) => {
     const updated = toggleLikedSong(song);
     setLikedSongs(updated);
-  };
+  }, []);
 
   // Offline Download / Removal
-  const handleDownloadToggle = async (song: Song) => {
+  const handleDownloadToggle = useCallback(async (song: Song) => {
     const downloaded = offlineTracks.some((t) => t.id === song.id);
     if (downloaded) {
       await removeOfflineTrack(song.id);
@@ -613,7 +596,7 @@ export default function App() {
         return next;
       });
     }
-  };
+  }, [offlineTracks, refreshOfflineTracks]);
 
   // Create Playlist
   const handleCreatePlaylist = (name: string, description?: string) => {
@@ -702,8 +685,16 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [currentSong, currentTime, duration, playNextSong, playPreviousSong]);
 
-  const likedSet = new Set(likedSongs.map((s) => s.id));
-  const downloadedSet = new Set(offlineTracks.map((t) => t.id));
+  const likedSet = useMemo(() => new Set(likedSongs.map((s) => s.id)), [likedSongs]);
+  const downloadedSet = useMemo(() => new Set(offlineTracks.map((t) => t.id)), [offlineTracks]);
+
+  // Stable play handlers prevent the whole song grid/list from rerendering on every progress tick.
+  const playTrendingSong = useCallback((song: Song) => playSong(song, trendingSongs), [playSong, trendingSongs]);
+  const playSearchSong = useCallback((song: Song) => playSong(song, searchResults), [playSong, searchResults]);
+  const playLikedSong = useCallback((song: Song) => playSong(song, likedSongs), [playSong, likedSongs]);
+  const playOfflineSong = useCallback((song: Song) => playSong(song, offlineTracks.map((t) => t.song)), [playSong, offlineTracks]);
+  const playHistorySong = useCallback((song: Song) => playSong(song, historySongs), [playSong, historySongs]);
+  const playPlaylistSong = useCallback((song: Song) => selectedPlaylist && playSong(song, selectedPlaylist.songs), [playSong, selectedPlaylist]);
 
   return (
     <div className="mx-app-shell h-screen bg-black text-white flex flex-col font-sans select-none overflow-hidden p-2 pb-24 md:pb-24">
@@ -955,11 +946,12 @@ export default function App() {
                         isPlaying={isPlaying && currentSong?.id === song.id}
                         isLiked={likedSet.has(song.id)}
                         isDownloaded={downloadedSet.has(song.id)}
-                        onPlay={(s) => playSong(s, trendingSongs)}
+                        onPlay={playTrendingSong}
                         onAddToQueue={addToQueue}
                         onLikeToggle={handleLikeToggle}
                         onAddToPlaylist={setPlaylistModalSong}
                         onDownloadToggle={handleDownloadToggle}
+                        onLyrics={openLyrics}
                         onStartRadio={handleStartRadio}
                         onShare={handleShareSong}
                       />
@@ -973,7 +965,7 @@ export default function App() {
                       isPlaying={isPlaying}
                       likedSongIds={likedSet}
                       downloadedSongIds={downloadedSet}
-                      onPlay={(s) => playSong(s, trendingSongs)}
+                      onPlay={playTrendingSong}
                       onAddToQueue={addToQueue}
                       onLikeToggle={handleLikeToggle}
                       onAddToPlaylist={setPlaylistModalSong}
@@ -1043,11 +1035,12 @@ export default function App() {
                     isPlaying={isPlaying && currentSong?.id === song.id}
                     isLiked={likedSet.has(song.id)}
                     isDownloaded={downloadedSet.has(song.id)}
-                    onPlay={(s) => playSong(s, searchResults)}
+                    onPlay={playSearchSong}
                     onAddToQueue={addToQueue}
                     onLikeToggle={handleLikeToggle}
                     onAddToPlaylist={setPlaylistModalSong}
                     onDownloadToggle={handleDownloadToggle}
+                    onLyrics={openLyrics}
                   />
                 ))}
               </div>
@@ -1059,11 +1052,12 @@ export default function App() {
                   isPlaying={isPlaying}
                   likedSongIds={likedSet}
                   downloadedSongIds={downloadedSet}
-                  onPlay={(s) => playSong(s, searchResults)}
+                  onPlay={playSearchSong}
                   onAddToQueue={addToQueue}
                   onLikeToggle={handleLikeToggle}
                   onAddToPlaylist={setPlaylistModalSong}
                   onDownloadToggle={handleDownloadToggle}
+                  onLyrics={openLyrics}
                 />
               </div>
             )}
@@ -1102,11 +1096,12 @@ export default function App() {
                 isPlaying={isPlaying}
                 likedSongIds={likedSet}
                 downloadedSongIds={downloadedSet}
-                onPlay={(s) => playSong(s, likedSongs)}
+                onPlay={playLikedSong}
                 onAddToQueue={addToQueue}
                 onLikeToggle={handleLikeToggle}
                 onAddToPlaylist={setPlaylistModalSong}
                 onDownloadToggle={handleDownloadToggle}
+                onLyrics={openLyrics}
               />
             </div>
           </div>
@@ -1149,11 +1144,12 @@ export default function App() {
                 isPlaying={isPlaying}
                 likedSongIds={likedSet}
                 downloadedSongIds={downloadedSet}
-                onPlay={(s) => playSong(s, offlineTracks.map((t) => t.song))}
+                onPlay={playOfflineSong}
                 onAddToQueue={addToQueue}
                 onLikeToggle={handleLikeToggle}
                 onAddToPlaylist={setPlaylistModalSong}
                 onDownloadToggle={handleDownloadToggle}
+                onLyrics={openLyrics}
               />
             </div>
           </div>
@@ -1277,11 +1273,12 @@ export default function App() {
                     isPlaying={isPlaying}
                     likedSongIds={likedSet}
                     downloadedSongIds={downloadedSet}
-                    onPlay={(s) => playSong(s, selectedPlaylist.songs)}
+                    onPlay={playPlaylistSong}
                     onAddToQueue={addToQueue}
                     onLikeToggle={handleLikeToggle}
                     onAddToPlaylist={setPlaylistModalSong}
                     onDownloadToggle={handleDownloadToggle}
+                    onLyrics={openLyrics}
                     showRemoveOption
                     onRemoveFromList={(songId) => handleRemoveFromPlaylist(selectedPlaylist.id, songId)}
                   />
@@ -1320,11 +1317,12 @@ export default function App() {
                 isPlaying={isPlaying}
                 likedSongIds={likedSet}
                 downloadedSongIds={downloadedSet}
-                onPlay={(s) => playSong(s, historySongs)}
+                onPlay={playHistorySong}
                 onAddToQueue={addToQueue}
                 onLikeToggle={handleLikeToggle}
                 onAddToPlaylist={setPlaylistModalSong}
                 onDownloadToggle={handleDownloadToggle}
+                onLyrics={openLyrics}
               />
             </div>
           </div>
@@ -1395,7 +1393,7 @@ export default function App() {
         }}
         onShuffleToggle={() => setIsShuffle(!isShuffle)}
         onLikeToggle={() => currentSong && handleLikeToggle(currentSong)}
-        onLyricsToggle={() => setShowLyrics(!showLyrics)}
+        onLyricsToggle={() => { if (currentSong) setLyricsSong(currentSong); setShowLyrics(!showLyrics); }}
         onQueueToggle={() => setShowQueue(!showQueue)}
         onVideoToggle={() => setShowVideo(!showVideo)}
         onAddToPlaylistClick={() => currentSong && setPlaylistModalSong(currentSong)}
@@ -1427,7 +1425,7 @@ export default function App() {
           onShuffle={() => setIsShuffle((v) => !v)}
           onRepeat={() => setRepeatMode((m) => m === 'off' ? 'all' : m === 'all' ? 'one' : 'off')}
           onQueue={() => setShowQueue(true)}
-          onLyrics={() => setShowLyrics(true)}
+          onLyrics={() => { if (currentSong) setLyricsSong(currentSong); setShowLyrics(true); }}
           onShare={() => handleShareSong(currentSong)}
         />
       )}
@@ -1496,9 +1494,9 @@ export default function App() {
 
       {/* Lyrics Modal */}
       <LyricsModal
-        song={currentSong}
+        song={lyricsSong || currentSong}
         isOpen={showLyrics}
-        onClose={() => setShowLyrics(false)}
+        onClose={() => { setShowLyrics(false); setLyricsSong(null); }}
       />
 
       {/* Add to Playlist Modal */}

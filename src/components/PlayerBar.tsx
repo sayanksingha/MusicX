@@ -404,5 +404,4 @@ const PlayerBarComponent: React.FC<PlayerBarProps> = ({
   );
 };
 
-
 export const PlayerBar = React.memo(PlayerBarComponent);

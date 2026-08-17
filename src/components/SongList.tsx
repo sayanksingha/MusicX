@@ -1,5 +1,5 @@
-import React from 'react';
-import { Play, Heart, ListPlus, Plus, Clock, Music, Download, CheckCircle2, Radio, Share2 } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Play, Heart, ListPlus, Plus, Clock, Music, Download, CheckCircle2, Radio, Share2, FileText } from 'lucide-react';
 import { Song } from '../types';
 
 interface SongListProps {
@@ -15,6 +15,7 @@ interface SongListProps {
   onDownloadToggle?: (song: Song) => void;
   onStartRadio?: (song: Song) => void;
   onShare?: (song: Song) => void;
+  onLyrics?: (song: Song) => void;
   onRemoveFromList?: (songId: string) => void;
   showRemoveOption?: boolean;
 }
@@ -32,9 +33,25 @@ const SongListComponent: React.FC<SongListProps> = ({
   onDownloadToggle,
   onStartRadio,
   onShare,
+  onLyrics,
   onRemoveFromList,
   showRemoveOption,
 }) => {
+  const touchHandledRef = useRef(false);
+  const handlePlayPointerDown = (e: React.PointerEvent, song: Song) => {
+    if (e.pointerType === 'touch') {
+      touchHandledRef.current = true;
+      onPlay(song);
+    }
+  };
+  const handlePlayClick = (song: Song) => {
+    if (touchHandledRef.current) {
+      touchHandledRef.current = false;
+      return;
+    }
+    onPlay(song);
+  };
+
   if (songs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 px-4 text-center border border-dashed border-white/10 rounded-2xl bg-neutral-900/40">
@@ -80,7 +97,8 @@ const SongListComponent: React.FC<SongListProps> = ({
                 <td className="py-3 px-3 text-center text-xs text-neutral-400 relative">
                   <span className="group-hover:hidden">{isCurrent && isPlaying ? '▶' : index + 1}</span>
                   <button
-                    onClick={() => onPlay(song)}
+                    onPointerDown={(e) => handlePlayPointerDown(e, song)}
+                    onClick={() => handlePlayClick(song)}
                     className="hidden group-hover:flex items-center justify-center mx-auto w-7 h-7 rounded-full bg-[#1DB954] text-black hover:scale-105 transition shadow-lg"
                     title="Play"
                   >
@@ -103,7 +121,8 @@ const SongListComponent: React.FC<SongListProps> = ({
                     </div>
                     <div className="min-w-0 max-w-xs sm:max-w-md">
                       <p
-                        onClick={() => onPlay(song)}
+                        onPointerDown={(e) => handlePlayPointerDown(e, song)}
+                        onClick={() => handlePlayClick(song)}
                         className={`font-medium truncate cursor-pointer hover:underline ${
                           isCurrent ? 'text-[#1DB954]' : 'text-white'
                         }`}
@@ -178,6 +197,16 @@ const SongListComponent: React.FC<SongListProps> = ({
                       <Plus className="w-4 h-4" />
                     </button>
 
+                    {onLyrics && (
+                      <button
+                        onClick={() => onLyrics(song)}
+                        className="p-1.5 rounded-lg text-neutral-400 hover:text-[#1DB954] hover:bg-neutral-800 transition"
+                        title="Open Lyrics"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </button>
+                    )}
+
                     {onShare && (
                       <button
                         onClick={() => onShare(song)}
@@ -207,6 +236,5 @@ const SongListComponent: React.FC<SongListProps> = ({
     </div>
   );
 };
-
 
 export const SongList = React.memo(SongListComponent);
