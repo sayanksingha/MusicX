@@ -59,6 +59,7 @@ import { AuthModal } from './components/AuthModal';
 import { SleepTimerModal } from './components/SleepTimerModal';
 import { AudioSettingsModal } from './components/AudioSettingsModal';
 import { NowPlayingView } from './components/NowPlayingView';
+import { JamSyncModal, SharedPlaybackState } from './components/JamSyncModal';
 
 const GENRES = [
   { id: 'top-hits', name: '🔥 Top Hits', query: 'top music hits 2026' },
@@ -144,12 +145,78 @@ export default function App() {
   // Toast Notification State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Swargam Connect: live Jam sessions + cross-device playback handoff
+  const [showJamSync, setShowJamSync] = useState(false);
+  const [syncSession, setSyncSession] = useState<{ code: string; token: string } | null>(null);
+  const syncApplyingRef = React.useRef(false);
+
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage((prev) => (prev === msg ? null : prev));
     }, 3500);
   }, []);
+
+
+  const buildSharedPlaybackState = useCallback((): SharedPlaybackState => ({
+    currentSong,
+    isPlaying,
+    currentTime,
+    duration,
+    volume,
+    isMuted,
+    repeatMode,
+    isShuffle,
+    queue,
+    queueIndex,
+    updatedAt: Date.now(),
+    sourceId: 'local',
+  }), [currentSong, isPlaying, currentTime, duration, volume, isMuted, repeatMode, isShuffle, queue, queueIndex]);
+
+  const applyRemotePlaybackState = useCallback((state: SharedPlaybackState) => {
+    if (!state) return;
+    syncApplyingRef.current = true;
+    setCurrentSong(state.currentSong);
+    setIsPlaying(state.isPlaying);
+    setCurrentTime(state.currentTime || 0);
+    setDuration(state.duration || state.currentSong?.duration || 0);
+    setVolume(typeof state.volume === 'number' ? state.volume : 0.8);
+    setIsMuted(!!state.isMuted);
+    setRepeatMode(state.repeatMode || 'off');
+    setIsShuffle(!!state.isShuffle);
+    setQueue(state.queue || (state.currentSong ? [state.currentSong] : []));
+    setQueueIndex(typeof state.queueIndex === 'number' ? state.queueIndex : 0);
+    if (state.currentSong) {
+      const offlineMatch = offlineTracks.find((t) => t.id === state.currentSong?.id);
+      setCurrentOfflineBlobUrl(offlineMatch?.blobUrl);
+      setSeekTime(state.currentTime || 0);
+    }
+    window.setTimeout(() => { syncApplyingRef.current = false; }, 700);
+  }, [offlineTracks]);
+
+  const publishPlaybackState = useCallback((includePosition = true) => {
+    if (!syncSession || syncApplyingRef.current) return;
+    const state = buildSharedPlaybackState();
+    if (!includePosition) state.currentTime = 0;
+    state.sourceId = 'local';
+    fetch('/api/sync/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: syncSession.code, token: syncSession.token, state }),
+    }).catch(() => {});
+  }, [syncSession, buildSharedPlaybackState]);
+
+  useEffect(() => {
+    if (!syncSession || syncApplyingRef.current) return;
+    const timer = window.setTimeout(() => publishPlaybackState(true), 250);
+    return () => window.clearTimeout(timer);
+  }, [syncSession, currentSong?.id, isPlaying, queueIndex, repeatMode, isShuffle, queue.length, publishPlaybackState]);
+
+  useEffect(() => {
+    if (!syncSession) return;
+    const interval = window.setInterval(() => publishPlaybackState(true), 2000);
+    return () => window.clearInterval(interval);
+  }, [syncSession, publishPlaybackState]);
 
   // Sleep Timer Countdown Effect
   useEffect(() => {
@@ -596,6 +663,7 @@ export default function App() {
             offlineCount={offlineTracks.length}
             currentUser={currentUser}
             onOpenAuth={() => setShowAuthModal(true)}
+            onOpenJamSync={() => setShowJamSync(true)}
           />
 
           <main className="mx-content flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar">
@@ -1179,6 +1247,15 @@ export default function App() {
       </main>
         </div>
       </div>
+
+      <JamSyncModal
+        open={showJamSync}
+        onClose={() => setShowJamSync(false)}
+        currentState={buildSharedPlaybackState()}
+        onRemoteState={applyRemotePlaybackState}
+        onToast={showToast}
+        onSessionChange={setSyncSession}
+      />
 
       {/* Audio & MediaSession Player Engine */}
       <YouTubeIframePlayer

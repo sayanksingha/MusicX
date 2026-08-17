@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Music, Heart, Library, History, Compass, Download, User, X } from 'lucide-react';
+import { Search, Music, Heart, Library, History, Compass, Download, User, X, Radio, Smartphone } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface NavbarProps {
@@ -12,6 +12,7 @@ interface NavbarProps {
   offlineCount: number;
   currentUser: UserProfile;
   onOpenAuth: () => void;
+  onOpenJamSync: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -24,6 +25,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   offlineCount,
   currentUser,
   onOpenAuth,
+  onOpenJamSync,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -62,6 +64,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
             <span className="font-extrabold text-lg text-white">Swargam</span>
           </div>
+
+          {/* Live Jam / Device Sync */}
+          <button
+            onClick={onOpenJamSync}
+            className="flex items-center gap-2 px-3 py-2 rounded-full bg-[#1DB954]/10 hover:bg-[#1DB954]/20 border border-[#1DB954]/20 text-[#1DB954] text-xs font-black transition"
+            title="Jam and seamless device playback"
+          >
+            <Radio className="w-4 h-4" />
+            <span className="hidden sm:inline">Jam & Sync</span>
+          </button>
 
           {/* User Account Pill */}
           <button

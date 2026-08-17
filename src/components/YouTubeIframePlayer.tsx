@@ -52,7 +52,7 @@ export const YouTubeIframePlayer: React.FC<YouTubeIframePlayerProps> = ({
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentSong.title,
         artist: currentSong.artist,
-        album: 'musix',
+        album: 'Swargam',
         artwork: [
           { src: currentSong.thumbnail, sizes: '96x96', type: 'image/jpeg' },
           { src: currentSong.thumbnail, sizes: '128x128', type: 'image/jpeg' },
@@ -73,15 +73,29 @@ export const YouTubeIframePlayer: React.FC<YouTubeIframePlayerProps> = ({
       navigator.mediaSession.setActionHandler('nexttrack', () => {
         onNext();
       });
-      navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (details.seekTime !== undefined) {
-          if (audioRef.current && offlineBlobUrl) {
-            audioRef.current.currentTime = details.seekTime;
-          } else if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
-            playerRef.current.seekTo(details.seekTime, true);
+      try {
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+          if (details.seekTime !== undefined) {
+            if (audioRef.current && offlineBlobUrl) {
+              audioRef.current.currentTime = details.seekTime;
+            } else if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
+              playerRef.current.seekTo(details.seekTime, true);
+            }
           }
-        }
-      });
+        });
+        navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+          const offset = details.seekOffset || 10;
+          if (audioRef.current && offlineBlobUrl) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - offset);
+          else if (playerRef.current) playerRef.current.seekTo(Math.max(0, playerRef.current.getCurrentTime() - offset), true);
+        });
+        navigator.mediaSession.setActionHandler('seekforward', (details) => {
+          const offset = details.seekOffset || 10;
+          if (audioRef.current && offlineBlobUrl) audioRef.current.currentTime += offset;
+          else if (playerRef.current) playerRef.current.seekTo(playerRef.current.getCurrentTime() + offset, true);
+        });
+        navigator.mediaSession.setActionHandler('stop', () => onStateChange(false));
+      } catch {}
+
     }
   }, [currentSong?.id, offlineBlobUrl]);
 
@@ -219,11 +233,17 @@ export const YouTubeIframePlayer: React.FC<YouTubeIframePlayerProps> = ({
         const currentTime = audioRef.current.currentTime || 0;
         const duration = audioRef.current.duration || currentSong?.duration || 0;
         onTimeUpdate(currentTime, duration);
+        if ('mediaSession' in navigator && duration > 0 && Number.isFinite(duration)) {
+          try { navigator.mediaSession.setPositionState({ duration, playbackRate: 1, position: Math.min(currentTime, duration) }); } catch {}
+        }
       } else if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
         try {
           const currentTime = playerRef.current.getCurrentTime() || 0;
           const duration = playerRef.current.getDuration() || currentSong?.duration || 0;
           onTimeUpdate(currentTime, duration);
+          if ('mediaSession' in navigator && duration > 0 && Number.isFinite(duration)) {
+            try { navigator.mediaSession.setPositionState({ duration, playbackRate: 1, position: Math.min(currentTime, duration) }); } catch {}
+          }
         } catch (e) {}
       }
     }, 250);

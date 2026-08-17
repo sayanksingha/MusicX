@@ -41,3 +41,12 @@ npm start
 ```
 
 Set `GEMINI_API_KEY` in the deployment environment when AI-powered lyric assistance is enabled.
+
+
+## Swargam Connect
+
+- **Background playback:** Media Session metadata and lock-screen/headset controls are enabled where the browser/OS supports background media. Offline HTML5 audio can continue in supported mobile browsers. YouTube iframe playback remains subject to browser and platform background-playback policies.
+- **Jam:** Start a live Jam and share the six-character code. Participants receive synchronized track, queue and play/pause state over Server-Sent Events.
+- **Seamless device playback:** Create a Sync session and join it from another device/browser with the code. Current track, queue, playback position and playback settings are synchronized.
+
+The live sync room store is intentionally in-memory for this deployment. For durable multi-instance production sync, use a shared Redis/Postgres-backed realtime service.
